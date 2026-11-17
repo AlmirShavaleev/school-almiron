@@ -51,6 +51,7 @@ import { progressNote } from '@/lib/progressUnlock'
 import { readPagePosition, savePagePosition, takeScrollPosition } from '@/lib/pagePosition'
 import { noteNav } from '@/lib/perf/rum'
 import { ownStudentRow } from '@/lib/ownStudent'
+import { LessonNavigation } from '@/components/student/course/LessonNavigation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ interface TopicInfo {
   order_index:    number
   available_from: string | null
   is_open:        boolean | null
+  module_id:      string | null
   module_title:   string
   course_title:   string
   /** §282: для плашки «курс закрыт подпиской». */
@@ -113,7 +115,12 @@ export interface TopicPageProps {
   staffBar?: ReactNode
 }
 
-export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar }: TopicPageProps = {}) {
+export function TopicPage(props: TopicPageProps = {}) {
+  const params = useParams<{ groupId: string; topicId: string }>()
+  return <TopicPageContent key={`${props.groupId ?? params.groupId}:${props.topicId ?? params.topicId}`} {...props} />
+}
+
+function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar }: TopicPageProps) {
   const params = useParams<{ groupId: string; topicId: string }>()
   const groupId = groupIdProp ?? params.groupId
   const topicId = topicIdProp ?? params.topicId
@@ -226,6 +233,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           order_index:    td.order_index,
           available_from: td.available_from,
           is_open:        td.is_open ?? null,
+          module_id:      td.module_id ?? td.modules?.id ?? null,
           module_title:   td.modules?.title || '',
           course_title:   td.modules?.courses?.title || '',
           course_id:      td.modules?.courses?.id ?? null,
@@ -343,6 +351,13 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     noteNav('restore')
   }, [loading, topic])
 
+  const backToSection = () => {
+    if (!groupId) { navigate('/my-course'); return }
+    const section = topic?.module_id ? `?module=${encodeURIComponent(topic.module_id)}` : ''
+    navigate(`/my-course/${groupId}${section}`)
+  }
+  const backClass = 'mb-3 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3 text-base font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+
   // ── States ───────────────────────────────────────────────────────────────────
 
   if (loading) return (
@@ -355,7 +370,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
       <AlertCircle size={36} className="opacity-40" />
       <p>Тема не найдена</p>
-      <button onClick={() => navigate(-1)} className="text-primary-600 hover:underline text-sm">Назад</button>
+      <button onClick={backToSection} className={backClass}><ArrowLeft size={20} />Назад</button>
     </div>
   )
 
@@ -377,7 +392,7 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           ? `Откроется ${new Date(willOpenByDate(topic) + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}`
           : 'Откроется позже'}
       </p>
-      <button onClick={() => navigate(-1)} className="text-primary-600 hover:underline text-sm">← Назад</button>
+      <button onClick={backToSection} className={backClass}><ArrowLeft size={20} />Назад к разделу</button>
       </div>
     </div>
   )
@@ -720,9 +735,8 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       {/* ── Шапка: «Назад» и название темы (владелец 15.10) ── */}
       <div>
         {!embedded && (
-          <button onClick={() => navigate(-1)}
-            className="mb-3 inline-flex items-center gap-1.5 text-sm text-gray-500 transition-colors hover:text-gray-900">
-            <ArrowLeft size={15} />Назад
+          <button onClick={backToSection} className={backClass}>
+            <ArrowLeft size={20} />Назад к разделу
           </button>
         )}
         {/* §240. Метка работы по времени — над названием: это не урок. */}
@@ -820,6 +834,10 @@ export function TopicPage({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           урока — опрос грузится, лишь когда ученик сам открыл «Отзыв».
           У работы по времени опроса нет. */}
       {reviewOpen && !timed && <TopicFeedbackCard topicId={topic.id} preview={preview} />}
+      {!embedded && !timed && groupId && topic.course_id && (
+        <LessonNavigation groupId={groupId} courseId={topic.course_id} topicId={topic.id}
+          locks={progressLocks.data} bypassAvailability={canBypassAvailability} />
+      )}
     </div>
   )
 }

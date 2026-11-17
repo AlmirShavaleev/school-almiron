@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { StudentViewScope, useStaffModeStore } from '@/store/staffModeStore'
 
 /**
@@ -134,4 +134,20 @@ describe('Тема глазами ученика во вкладке «Курс�
     expect(screen.queryByTestId('topic-seg-homework')).not.toBeInTheDocument()
     expect(screen.queryByTestId('topic-section-homework')).not.toBeInTheDocument()
   })
+})
+
+
+function CourseLocation() {
+  const location = useLocation()
+  return <div data-testid="course-location">{location.pathname}{location.search}</div>
+}
+it('крупная кнопка возврата ведёт в раздел урока даже при прямом входе', async () => {
+  render(<MemoryRouter initialEntries={[`/my-course/${GROUP}/topic/${TOPIC}`]}><StudentViewScope><Routes>
+    <Route path="/my-course/:groupId/topic/:topicId" element={<TopicPage />} />
+    <Route path="/my-course/:groupId" element={<CourseLocation />} />
+  </Routes></StudentViewScope></MemoryRouter>)
+  const back = await screen.findByRole('button', { name: 'Назад к разделу' })
+  expect(back).toHaveClass('min-h-12', 'text-base')
+  fireEvent.click(back)
+  expect(screen.getByTestId('course-location')).toHaveTextContent(`/my-course/${GROUP}?module=mod-1`)
 })

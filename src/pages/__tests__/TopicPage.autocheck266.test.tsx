@@ -196,8 +196,10 @@ describe('Тренировочный урок (§266)', () => {
     // Владелец 15.10: оценка — в разделе «Отзыв» переключателя урока.
     fireEvent.click(await screen.findByTestId('topic-seg-review'))
     const block = await screen.findByTestId('topic-rating')
-    // Внизу темы: оценка, сразу за ней — опрос по уроку (письмо 16.10), своей карточкой.
-    expect(container.firstElementChild?.lastElementChild).toBe(screen.getByTestId('topic-feedback'))
+    // После оценки и опроса — переходы между уроками.
+    const navigation = screen.getByRole('navigation', { name: 'Навигация по урокам' })
+    expect(container.firstElementChild?.lastElementChild).toBe(navigation)
+    expect(navigation.previousElementSibling).toBe(screen.getByTestId('topic-feedback'))
     expect(screen.getByTestId('topic-feedback').previousElementSibling).toBe(block)
     expect(within(block).getAllByRole('button', { name: /^Оценка \d+ из 10$/ })).toHaveLength(10)
     await waitFor(() => expect(rpcCalls.some(c => c.fn === 'my_topic_rating' && c.args.p_topic_id === TOPIC)).toBe(true))
