@@ -1053,9 +1053,15 @@ export function useCatalogTasksBatch(taskIds: string[]) {
 
 // ── Search tasks in a section (includes unassigned tasks) ─────────────────────
 
-export interface CatalogSearchResult extends CatalogTask {
+/** Поиск выводит только номер и короткий фрагмент условия. Полная карточка
+ * (и серверно защищённые ответы) загружается при открытии задачи, не раньше.
+ */
+export interface CatalogSearchResult extends Pick<CatalogTask, 'id' | 'external_id' | 'section_id' | 'statement_html'> {
   hasTopicAssigned?: boolean
 }
+
+const CATALOG_SEARCH_COLUMNS = 'id, external_id, section_id, statement_html'
+const CATALOG_SEARCH_STAFF_ROLES = new Set(['teacher', 'curator', 'admin', 'owner'])
 
 export function useCatalogSearch(query: string, sectionId: string | undefined, enabled = true) {
   const { profile } = useAuthStore()
@@ -1065,97 +1071,72 @@ export function useCatalogSearch(query: string, sectionId: string | undefined, e
 
   useEffect(() => {
     const q = query.trim()
-    if (!enabled || !profile || !sectionId || q.length < 2) { setResults([]); setLoading(false); setError(null); return }
+    if (!enabled || !profile || !sectionId || q.length < 2) {
+      setResults([])
+      setLoading(false)
+      setError(null)
+      return
+    }
     let cancelled = false
 
     async function search() {
       setLoading(true)
       setError(null)
       try {
-        // Numeric query → search by external_id first
+        // Точный номер сначала ищем по external_id, затем (если нет) по тексту.
         const isNum = /^\d+$/.test(q)
-        let data: Array<Pick<CatalogTask, 'id' | 'external_id' | 'section_id'>> | null = null
-        let err = null
+        let data: CatalogSearchResult[] | null = null
+        let err: { message?: string } | null = null
 
         if (isNum) {
           const res = await db
             .from('catalog_tasks')
-            .select('id, external_id, section_id')
+            .select(CATALOG_SEARCH_COLUMNS)
             .eq('section_id', sectionId)
             .eq('external_id', parseInt(q, 10))
             .eq('is_published', true)
             .limit(20)
-          data = res.data; err = res.error
+          data = res.data
+          err = res.error
         }
 
-        // Text search (ilike on plain-text rendering not possible without RPC — use HTML)
+        // Для фрагмента поиска нужно условие задачи, но не ответ, не решение и не картинки.
         if (!isNum || !data?.length) {
           const res = await db
             .from('catalog_tasks')
-            .select('id, external_id, section_id')
+            .select(CATALOG_SEARCH_COLUMNS)
             .eq('section_id', sectionId)
             .eq('is_published', true)
             .ilike('statement_html', `%${q}%`)
             .order('position')
             .limit(50)
-          if (!err) { data = res.data; err = res.error }
-        }
-
-        if (err || cancelled) { if (!cancelled) setError(err?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
-
-        const rows = data ?? []
-        const taskIds = rows.map(row => row.id)
-        const tasksData = await fetchTasksByIds(taskIds)
-        if (cancelled) return
-
-        const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
-        const ASSET_PAGE = 1000
-        const ASSET_CHUNK = 50
-        for (let ci = 0; ci < taskIds.length; ci += ASSET_CHUNK) {
-          const chunk = taskIds.slice(ci, ci + ASSET_CHUNK)
-          for (let from = 0; ; from += ASSET_PAGE) {
-            const { data: assetPage, error: assetsError } = await db
-              .from('catalog_task_assets')
-              .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
-              .in('task_id', chunk)
-              .order('position')
-              .range(from, from + ASSET_PAGE - 1)
-            if (assetsError || cancelled) { if (!cancelled) setError(assetsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
-            if (!assetPage || assetPage.length === 0) break
-            allAssets.push(...(assetPage as (CatalogTaskAsset & { task_id: string })[]))
-            if (assetPage.length < ASSET_PAGE) break
+          if (!err) {
+            data = res.data
+            err = res.error
           }
         }
 
-        const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
-        for (const asset of allAssets) {
-          if (!assetsByTask[asset.task_id]) assetsByTask[asset.task_id] = []
-          assetsByTask[asset.task_id].push(asset)
-        }
+        if (cancelled) return
+        if (err) throw new Error(err.message ?? 'Не удалось загрузить каталог')
 
-        // Check which tasks have a topic (for admin marker)
+        const rows = data ?? []
+        // Метка «тема не назначена» нужна только персоналу, ученик её не видит.
         const linkedSet = new Set<string>()
-        for (let i = 0; i < taskIds.length; i += 50) {
+        if (rows.length && CATALOG_SEARCH_STAFF_ROLES.has(profile.role)) {
           const { data: links, error: linksError } = await db
             .from('catalog_task_topics')
             .select('task_id')
-            .in('task_id', taskIds.slice(i, i + 50))
-          if (linksError || cancelled) { if (!cancelled) setError(linksError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
-          for (const l of links ?? []) linkedSet.add(l.task_id)
+            .in('task_id', rows.map(row => row.id))
+          if (cancelled) return
+          if (linksError) throw new Error(linksError.message ?? 'Не удалось загрузить каталог')
+          for (const link of links ?? []) linkedSet.add(link.task_id)
         }
 
         if (!cancelled) {
-          const taskMap = new Map(tasksData.map(task => [task.id, task]))
-          setResults(
-            taskIds
-              .map(id => taskMap.get(id))
-              .filter((task): task is CatalogTask => !!task)
-              .map(task => ({
-                ...task,
-                assets: assetsByTask[task.id] ?? [],
-                hasTopicAssigned: linkedSet.has(task.id),
-              }))
-          )
+          setResults(rows.map(row => ({
+            ...row,
+            hasTopicAssigned: CATALOG_SEARCH_STAFF_ROLES.has(profile.role) ? linkedSet.has(row.id) : undefined,
+          })))
           setLoading(false)
         }
       } catch (e) {
@@ -1166,6 +1147,7 @@ export function useCatalogSearch(query: string, sectionId: string | undefined, e
       }
     }
 
+    // Уже существующий debounce 300 мс: ввод текста не отправляет запрос на каждую клавишу.
     const timer = setTimeout(search, 300)
     return () => { cancelled = true; clearTimeout(timer) }
   }, [enabled, profile, query, sectionId])
