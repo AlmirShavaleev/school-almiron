@@ -180,7 +180,8 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
           // теме выдаётся, как только у него появится файл.
           created_by: profile.id,
           due_at: extra?.due_at || null,
-          grade_scale: extra?.grade_scale ?? 'hundred',
+          // @ts-expect-error SQL-триггер выбирает шкалу по типу темы при null; генератор не отражает этот ввод.
+          grade_scale: extra?.grade_scale ?? null,
         })
         .select('*')
         .single()
