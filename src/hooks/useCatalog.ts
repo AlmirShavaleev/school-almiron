@@ -6,6 +6,7 @@ import { physicsDifficultyByExternalId, getPhysicsDifficultyOrder, type PhysicsD
 import { physicsTopicsCatalog } from '@/lib/physicsTopicsCatalog'
 import { CATALOG_ASSETS_BUCKET } from '@/lib/catalogAssets'
 import { applyTaskTexts, fetchCatalogTaskTexts, withTaskTexts } from '@/lib/catalogTaskTexts'
+import { mapCatalogBatches } from '@/lib/catalogBatch'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -142,6 +143,8 @@ const AI_PHYSICS_SOURCE = 'ai_physics_v1'
 const AI_PHYSICS_ROOT_EXTERNAL_ID = 900000
 const AI_PHYSICS_MAX_EXTERNAL_ID = 900712
 const IN_FILTER_CHUNK = 50
+/** Не более трёх параллельных запросов каталога на одного клиента. */
+const CATALOG_BATCH_CONCURRENCY = 3
 const PHYSICS_TOPICS_CACHE_MS = 5 * 60 * 1000
 /**
  * Структура каталога (разделы, темы, число задач) меняется только при заливке
@@ -394,8 +397,7 @@ const TASK_ROW_SELECT = 'id, external_id, section_id, subject, exam_type, diffic
 async function fetchTasksByIds(taskIds: string[]): Promise<CatalogTask[]> {
   if (taskIds.length === 0) return []
 
-  const rows: CatalogTask[] = []
-  for (const batch of chunk(taskIds, IN_FILTER_CHUNK)) {
+  const rows = await mapCatalogBatches(taskIds, IN_FILTER_CHUNK, CATALOG_BATCH_CONCURRENCY, async batch => {
     const { data, error } = await db
       .from('catalog_tasks')
       .select(TASK_ROW_SELECT)
@@ -404,11 +406,36 @@ async function fetchTasksByIds(taskIds: string[]): Promise<CatalogTask[]> {
       .order('position')
 
     if (error) throw new Error(error.message ?? 'Не удалось загрузить каталог')
-    rows.push(...(data ?? []))
-  }
+    return (data ?? []) as CatalogTask[]
+  })
 
   // §262: ответ и разбор — от сервера по правилу, не из строки задачи.
   return withTaskTexts(rows)
+}
+
+
+/**
+ * Загружаем иллюстрации по 50 задач в запросе и не более 3 пачек одновременно.
+ * Порядок пачек сохраняем, а внутри пачки сортирует сервер по position.
+ * Курс с сотнями задач больше не ждёт последовательную цепочку одинаковых HTTP-запросов.
+ */
+async function fetchCatalogAssetsByTaskIds(taskIds: string[]): Promise<(CatalogTaskAsset & { task_id: string })[]> {
+  return mapCatalogBatches(taskIds, IN_FILTER_CHUNK, CATALOG_BATCH_CONCURRENCY, async batch => {
+    const assets: (CatalogTaskAsset & { task_id: string })[] = []
+    for (let from = 0; ; from += SELECT_PAGE_SIZE) {
+      const { data, error } = await db
+        .from('catalog_task_assets')
+        .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
+        .in('task_id', batch)
+        .order('position')
+        .range(from, from + SELECT_PAGE_SIZE - 1)
+      if (error) throw new Error(error.message ?? 'Не удалось загрузить каталог')
+      if (!data || data.length === 0) break
+      assets.push(...(data as (CatalogTaskAsset & { task_id: string })[]))
+      if (data.length < SELECT_PAGE_SIZE) break
+    }
+    return assets
+  })
 }
 
 async function fetchCompletedTaskRowsForUserByTaskIds(userId: string, taskIds: string[]): Promise<Array<{ task_id: string; is_completed?: boolean }>> {
@@ -581,24 +608,7 @@ async function loadPhysicsTopicTasks(topicId: string, userId: string): Promise<{
   const tasksData = await fetchTasksByIds(taskIds)
   const completedIds = await fetchCompletedTaskIdsForUser(userId)
 
-  const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
-  const ASSET_PAGE = 1000
-  const ASSET_CHUNK = 50
-  for (let ci = 0; ci < taskIds.length; ci += ASSET_CHUNK) {
-    const chunk = taskIds.slice(ci, ci + ASSET_CHUNK)
-    for (let from = 0; ; from += ASSET_PAGE) {
-      const { data: assetPage, error: assetsError } = await db
-        .from('catalog_task_assets')
-        .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
-        .in('task_id', chunk)
-        .order('position')
-        .range(from, from + ASSET_PAGE - 1)
-      if (assetsError) throw new Error(assetsError.message ?? 'Не удалось загрузить каталог')
-      if (!assetPage || assetPage.length === 0) break
-      allAssets.push(...(assetPage as (CatalogTaskAsset & { task_id: string })[]))
-      if (assetPage.length < ASSET_PAGE) break
-    }
-  }
+  const allAssets = await fetchCatalogAssetsByTaskIds(taskIds)
 
   const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
   for (const asset of allAssets) {
@@ -980,23 +990,8 @@ export function useCatalogTasksBatch(taskIds: string[]) {
         if (cancelled) return
         for (let k = 0; k < allTasks.length; k++) allTasks[k] = applyTaskTexts(allTasks[k], textsById.get(allTasks[k].id))
 
-        // Batch-load all assets
-        const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
-        const PAGE = 1000
-        for (let i = 0; i < taskIds.length; i += CHUNK) {
-          for (let from = 0; ; from += PAGE) {
-            const { data: page, error: assetsError } = await db
-              .from('catalog_task_assets')
-              .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
-              .in('task_id', taskIds.slice(i, i + CHUNK))
-              .order('position')
-              .range(from, from + PAGE - 1)
-            if (assetsError || cancelled) { if (!cancelled) setError(assetsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
-            if (!page || page.length === 0) break
-            allAssets.push(...(page as (CatalogTaskAsset & { task_id: string })[]))
-            if (page.length < PAGE) break
-          }
-        }
+        // Иллюстрации всех задач загружаются ограниченно-параллельно.
+        const allAssets = await fetchCatalogAssetsByTaskIds(taskIds)
 
         if (cancelled) return
 
@@ -1108,24 +1103,9 @@ export function useCatalogSearch(query: string, sectionId: string | undefined, e
         const tasksData = await fetchTasksByIds(taskIds)
         if (cancelled) return
 
-        const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
-        const ASSET_PAGE = 1000
-        const ASSET_CHUNK = 50
-        for (let ci = 0; ci < taskIds.length; ci += ASSET_CHUNK) {
-          const chunk = taskIds.slice(ci, ci + ASSET_CHUNK)
-          for (let from = 0; ; from += ASSET_PAGE) {
-            const { data: assetPage, error: assetsError } = await db
-              .from('catalog_task_assets')
-              .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
-              .in('task_id', chunk)
-              .order('position')
-              .range(from, from + ASSET_PAGE - 1)
-            if (assetsError || cancelled) { if (!cancelled) setError(assetsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false); return }
-            if (!assetPage || assetPage.length === 0) break
-            allAssets.push(...(assetPage as (CatalogTaskAsset & { task_id: string })[]))
-            if (assetPage.length < ASSET_PAGE) break
-          }
-        }
+        const allAssets = await fetchCatalogAssetsByTaskIds(taskIds)
+        if (cancelled) return
+
 
         const assetsByTask: Record<string, CatalogTaskAsset[]> = {}
         for (const asset of allAssets) {
@@ -1206,26 +1186,10 @@ export function useCatalogTasks(topicId: string | undefined, _retryKey?: number,
         const tasksData = await fetchTasksByIds(taskIds)
         if (cancelled) return
 
-        // Assets: chunk .in() ≤50 UUIDs to avoid URL truncation, paginate rows
-        const allAssets: (CatalogTaskAsset & { task_id: string })[] = []
-        const ASSET_PAGE  = 1000
-        const ASSET_CHUNK = 50
-        for (let ci = 0; ci < taskIds.length; ci += ASSET_CHUNK) {
-          const chunk = taskIds.slice(ci, ci + ASSET_CHUNK)
-          for (let from = 0; ; from += ASSET_PAGE) {
-            const { data: assetPage, error: assetsError } = await db
-              .from('catalog_task_assets')
-              .select('id, task_id, tex_session_id, kind, storage_path, alt, position')
-              .in('task_id', chunk)
-              .order('position')
-              .range(from, from + ASSET_PAGE - 1)
-            if (assetsError || cancelled) { if (!cancelled) { setError(assetsError?.message ?? 'Не удалось загрузить каталог'); setLoading(false) } return }
-            if (!assetPage || assetPage.length === 0) break
-            allAssets.push(...(assetPage as (CatalogTaskAsset & { task_id: string })[]))
-            if (assetPage.length < ASSET_PAGE) break
-          }
-        }
+        const allAssets = await fetchCatalogAssetsByTaskIds(taskIds)
+        if (cancelled) return
         const assetsData = allAssets
+
 
         const progressData = await fetchCompletedTaskRowsForUserByTaskIds(profile!.id, taskIds)
         if (cancelled) return
