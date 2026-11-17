@@ -180,7 +180,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
           // теме выдаётся, как только у него появится файл.
           created_by: profile.id,
           due_at: extra?.due_at || null,
-          grade_scale: extra?.grade_scale ?? null,
+          grade_scale: extra?.grade_scale ?? 'hundred',
         })
         .select('*')
         .single()
