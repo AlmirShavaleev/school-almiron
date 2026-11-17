@@ -5,7 +5,7 @@
  * экран его не вычисляет.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 const TEMPLATE = { id: 't1', title: 'Мини', subject: 'math', exam_type: 'ege', year: 2027, max_points: [1, 1, 2, 3], part1_last: 2, score_scale: null }
@@ -95,8 +95,8 @@ describe('§224 монитор идущего пробника', () => {
     expect(works.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByTestId('mock-live-headline')).toHaveTextContent(/^Идёт · осталось 3 ч 13 мин · до \d\d:\d\d$/)
 
-    const counts = await screen.findByText(/пишут сейчас/)
-    expect(counts).toHaveTextContent('В группе 4 · пишут сейчас 1 · сдали 1 · открывали, сейчас не на сайте 1 · не заходили 1')
+    await waitFor(() => expect(screen.getByText(/пишут сейчас/)).toHaveTextContent(
+      'В группе 4 · пишут сейчас 1 · сдали 1 · открывали, сейчас не на сайте 1 · не заходили 1'))
 
     const rows = within(works).getAllByTestId('mock-grid-work-row')
     expect(rows.map(r => r.getAttribute('data-kind'))).toEqual(['absent', 'away', 'online', 'submitted'])
