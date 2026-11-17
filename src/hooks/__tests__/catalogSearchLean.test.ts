@@ -9,7 +9,7 @@ import { resolve } from 'node:path'
 describe('catalog search light requests', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/hooks/useCatalog.ts'), 'utf8')
   const start = source.indexOf('export function useCatalogSearchPreview(')
-  const end = source.indexOf('// ── Tasks for a topic', start)
+  const end = source.indexOf('export function useCatalogSearch(', start)
   const search = source.slice(start, end)
 
   it('получает только поля, которые показывает результат поиска', () => {
@@ -25,9 +25,9 @@ describe('catalog search light requests', () => {
   })
 
   it('загружает тему только для персонала и только когда есть результаты', () => {
-    expect(search).toContain("if (rows.length && CATALOG_SEARCH_STAFF_ROLES.has(profile.role))")
+    expect(search).toContain("if (rows.length && CATALOG_SEARCH_STAFF_ROLES.has(profile?.role ?? ''))")
     expect(search).toContain(".from('catalog_task_topics')")
-    expect(search).toContain("hasTopicAssigned: CATALOG_SEARCH_STAFF_ROLES.has(profile.role)")
+    expect(search).toContain("hasTopicAssigned: CATALOG_SEARCH_STAFF_ROLES.has(profile?.role ?? '')")
   })
 
   it('сохраняет поиск по номеру, поиск по тексту, debounce и защиту от старых ответов', () => {
