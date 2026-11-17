@@ -310,21 +310,21 @@ describe('Empty states', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe('Technical — PostgREST 1000-row protection', () => {
-  it('useCatalogTasks uses paginated .range() for assets', () => {
+  it('asset loader uses paginated .range() and a 1000-row cap', () => {
     const src = read('src/hooks/useCatalog.ts')
-    expect(src).toContain('.range(from, from + ASSET_PAGE - 1)')
-    expect(src).toContain('ASSET_PAGE')
-    expect(src).toContain('1000')
+    expect(src).toContain('async function fetchCatalogAssetsByTaskIds(')
+    expect(src).toContain('.range(from, from + SELECT_PAGE_SIZE - 1)')
+    expect(src).toContain('const SELECT_PAGE_SIZE = 1000')
   })
 
   it('asset pagination loop breaks on partial page', () => {
     const src = read('src/hooks/useCatalog.ts')
-    expect(src).toContain('assetPage.length < ASSET_PAGE')
+    expect(src).toContain('data.length < SELECT_PAGE_SIZE')
   })
 
   it('asset pagination loop breaks on empty page', () => {
     const src = read('src/hooks/useCatalog.ts')
-    expect(src).toContain('assetPage.length === 0')
+    expect(src).toContain('!data || data.length === 0')
   })
 
   it('section counts use RPC (not SELECT COUNT which hits row cap)', () => {
