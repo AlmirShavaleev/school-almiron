@@ -8,11 +8,13 @@ import { resolve } from 'node:path'
  */
 describe('catalog search light requests', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/hooks/useCatalog.ts'), 'utf8')
-  const start = source.indexOf('export function useCatalogSearch(')
+  const start = source.indexOf('export function useCatalogSearchPreview(')
   const end = source.indexOf('// ── Tasks for a topic', start)
   const search = source.slice(start, end)
 
   it('получает только поля, которые показывает результат поиска', () => {
+    expect(source).toContain('export function useCatalogSearch(')
+    expect(readFileSync(resolve(process.cwd(), 'src/pages/catalog/CatalogSectionPage.tsx'), 'utf8')).toContain('useCatalogSearchPreview(query, sectionId, searchEnabled)')
     expect(source).toContain("const CATALOG_SEARCH_COLUMNS = 'id, external_id, section_id, statement_html'")
     expect(search).toContain('.select(CATALOG_SEARCH_COLUMNS)')
     expect(search).not.toContain('fetchTasksByIds(')
