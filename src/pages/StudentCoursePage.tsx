@@ -476,7 +476,16 @@ export function StudentCoursePage() {
     [assessments.data],
   )
 
-  const [selectedModule, setSelectedModule] = useState<ModuleProgress | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedModule = modules.find(m => m.id === searchParams.get('module')) ?? null
+  function setSelectedModule(mod: ModuleProgress | null) {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (mod) next.set('module', mod.id)
+      else next.delete('module')
+      return next
+    })
+  }
   const [view,           setView]           = useState<CourseView>(getViewPref)
 
   function handleViewChange(v: CourseView) {
@@ -496,7 +505,6 @@ export function StudentCoursePage() {
   // пробников. Здесь — сразу на страницу пробника (replace: «назад» не
   // вернёт на промежуточный курс). Чужой или несуществующий id просто
   // откроет страницу пробника с её собственной ошибкой прав.
-  const [searchParams] = useSearchParams()
   const mockFromLink = searchParams.get('mock')
   useEffect(() => {
     if (groupId && mockFromLink && /^[0-9a-f-]{36}$/i.test(mockFromLink)) {
@@ -504,8 +512,6 @@ export function StudentCoursePage() {
     }
   }, [groupId, mockFromLink, navigate])
 
-  // Reset selected module when course changes
-  useEffect(() => { setSelectedModule(null) }, [groupId])
 
   // §224.2. Одно «сейчас» по часам базы на баннер и раздел «Пробники»: у
   // идущего пробника главная кнопка — в баннере, в разделе — тихая ссылка.

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StudentWeekCourse } from '@/hooks/useStudentWeekPlan'
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { countTopics } from '@/lib/studentCourseCounters'
 import type { ModuleProgress } from '@/hooks/useStudentCourseProgram'
 
@@ -22,7 +22,7 @@ const TODAY = '2026-09-06'
 
 const topic = (id: string, over: Record<string, unknown> = {}) => ({
   id, title: `Тема ${id}`, order_index: 1, max_score: null,
-  available_from: null, is_open: null, sections: [],
+  available_from: null, is_open: null, sections: new Set(),
   hw_id: null, hw_title: null, hw_instructions: null, hw_due_at: null,
   hw_grade_scale: null, hw_status: null, hw_score: null, hw_max: null, hw_comment: null,
   test_assignment_id: null, test_title: null, test_status: null,
@@ -149,4 +149,19 @@ describe('программа курса и подписка', () => {
     renderPage()
     expect((await screen.findAllByTestId('module-card')).length).toBeGreaterThan(0)
   })
+})
+
+
+function CourseAddress() {
+  return <div data-testid="course-address">{useLocation().search}</div>
+}
+it('раздел восстанавливается из адреса, а возврат к программе убирает параметр', async () => {
+  render(<MemoryRouter initialEntries={['/my-course/g1?module=m1']}><Routes>
+    <Route path="/my-course/:groupId" element={<><StudentCoursePage /><CourseAddress /></>} />
+  </Routes></MemoryRouter>)
+  expect(await screen.findByTestId('module-topics-count')).toBeInTheDocument()
+  expect(screen.queryByTestId('module-card')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /Назад|Физика ЕГЭ/ }))
+  expect(await screen.findByTestId('module-card')).toBeInTheDocument()
+  expect(screen.getByTestId('course-address')).toBeEmptyDOMElement()
 })
