@@ -45,11 +45,17 @@ optimized AS (
    WHERE t.is_published
    GROUP BY sd.label, t.section_id
 )
-SELECT 'old_minus_new' AS mismatch, count(*) AS mismatch_rows
-  FROM (SELECT * FROM legacy EXCEPT SELECT * FROM optimized) t
-UNION ALL
-SELECT 'new_minus_old', count(*)
-  FROM (SELECT * FROM optimized EXCEPT SELECT * FROM legacy) t;
+ , differences AS (
+   SELECT 'old_minus_new' AS mismatch, count(*) AS mismatch_rows
+     FROM (SELECT * FROM legacy EXCEPT SELECT * FROM optimized) t
+   UNION ALL
+   SELECT 'new_minus_old', count(*)
+     FROM (SELECT * FROM optimized EXCEPT SELECT * FROM legacy) t
+ )
+ SELECT mismatch, mismatch_rows,
+        -- Fail the script with division_by_zero on any differing row.
+        (1 / CASE WHEN sum(mismatch_rows) OVER () = 0 THEN 1 ELSE 0 END) AS assert_equivalent
+   FROM differences;
 
 -- Inspect RPC result under the database session's current access. In a
 -- normal privileged session without JWT claims, the function should return
