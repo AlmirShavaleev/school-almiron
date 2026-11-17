@@ -1053,10 +1053,113 @@ export function useCatalogTasksBatch(taskIds: string[]) {
 
 // ── Search tasks in a section (includes unassigned tasks) ─────────────────────
 
+/** Поиск выводит только номер и короткий фрагмент условия. Полная карточка
+ * (и серверно защищённые ответы) загружается при открытии задачи, не раньше.
+ */
 export interface CatalogSearchResult extends CatalogTask {
   hasTopicAssigned?: boolean
 }
 
+export interface CatalogSearchPreviewResult extends Pick<CatalogTask, 'id' | 'external_id' | 'section_id' | 'statement_html'> {
+  hasTopicAssigned?: boolean
+}
+
+const CATALOG_SEARCH_COLUMNS = 'id, external_id, section_id, statement_html'
+const CATALOG_SEARCH_STAFF_ROLES = new Set(['teacher', 'curator', 'admin', 'owner'])
+
+export function useCatalogSearchPreview(query: string, sectionId: string | undefined, enabled = true) {
+  const { profile } = useAuthStore()
+  const [results, setResults] = useState<CatalogSearchPreviewResult[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const q = query.trim()
+    if (!enabled || !profile || !sectionId || q.length < 2) {
+      setResults([])
+      setLoading(false)
+      setError(null)
+      return
+    }
+    let cancelled = false
+
+    async function search() {
+      setLoading(true)
+      setError(null)
+      try {
+        // Точный номер сначала ищем по external_id, затем (если нет) по тексту.
+        const isNum = /^\d+$/.test(q)
+        let data: CatalogSearchPreviewResult[] | null = null
+        let err: { message?: string } | null = null
+
+        if (isNum) {
+          const res = await db
+            .from('catalog_tasks')
+            .select(CATALOG_SEARCH_COLUMNS)
+            .eq('section_id', sectionId)
+            .eq('external_id', parseInt(q, 10))
+            .eq('is_published', true)
+            .limit(20)
+          data = res.data
+          err = res.error
+        }
+
+        // Для фрагмента поиска нужно условие задачи, но не ответ, не решение и не картинки.
+        if (!isNum || !data?.length) {
+          const res = await db
+            .from('catalog_tasks')
+            .select(CATALOG_SEARCH_COLUMNS)
+            .eq('section_id', sectionId)
+            .eq('is_published', true)
+            .ilike('statement_html', `%${q}%`)
+            .order('position')
+            .limit(50)
+          if (!err) {
+            data = res.data
+            err = res.error
+          }
+        }
+
+        if (cancelled) return
+        if (err) throw new Error(err.message ?? 'Не удалось загрузить каталог')
+
+        const rows = data ?? []
+        // Метка «тема не назначена» нужна только персоналу, ученик её не видит.
+        const linkedSet = new Set<string>()
+        if (rows.length && CATALOG_SEARCH_STAFF_ROLES.has(profile?.role ?? '')) {
+          const { data: links, error: linksError } = await db
+            .from('catalog_task_topics')
+            .select('task_id')
+            .in('task_id', rows.map(row => row.id))
+          if (cancelled) return
+          if (linksError) throw new Error(linksError.message ?? 'Не удалось загрузить каталог')
+          for (const link of links ?? []) linkedSet.add(link.task_id)
+        }
+
+        if (!cancelled) {
+          setResults(rows.map(row => ({
+            ...row,
+            hasTopicAssigned: CATALOG_SEARCH_STAFF_ROLES.has(profile?.role ?? '') ? linkedSet.has(row.id) : undefined,
+          })))
+          setLoading(false)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Не удалось загрузить каталог')
+          setLoading(false)
+        }
+      }
+    }
+
+    // Уже существующий debounce 300 мс: ввод текста не отправляет запрос на каждую клавишу.
+    const timer = setTimeout(search, 300)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [enabled, profile, query, sectionId])
+
+  return { results, loading, error }
+}
+
+// Конструктор ДЗ по-прежнему использует полную карточку и все изображения.
 export function useCatalogSearch(query: string, sectionId: string | undefined, enabled = true) {
   const { profile } = useAuthStore()
   const [results, setResults] = useState<CatalogSearchResult[]>([])
@@ -1172,6 +1275,7 @@ export function useCatalogSearch(query: string, sectionId: string | undefined, e
 
   return { results, loading, error }
 }
+
 
 // ── Tasks for a topic ─────────────────────────────────────────────────────────
 
