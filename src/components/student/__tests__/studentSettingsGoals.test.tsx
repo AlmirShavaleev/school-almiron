@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 // «Настройки» ученика и цели (письмо ЛК_стиль_настройки_ученика.md, 16.10).
@@ -8,6 +8,7 @@ const st = vi.hoisted(() => ({
   linked: false,
   rpc: {} as Record<string, unknown>,
   exam: [] as unknown[],
+  calls: [] as string[],
 }))
 
 function chain(data: unknown) {
@@ -27,16 +28,21 @@ vi.mock('@/lib/supabase', () => ({
       if (t === 'student_exam_goals') return chain(st.exam)
       return chain(null)
     },
-    rpc: (fn: string) => Promise.resolve({ data: st.rpc[fn] ?? null, error: null }),
+    rpc: (fn: string) => { st.calls.push(fn); return Promise.resolve({ data: st.rpc[fn] ?? null, error: null }) },
     functions: { invoke: () => Promise.resolve({ data: null, error: null }) },
   },
 }))
 
+vi.mock('@/hooks/useStudentDashboard', () => ({
+  useStudentDashboard: () => ({ loading: false, courses: [{ subject: 'physics', examType: 'ege' }] }),
+}))
+
+import { StudentGoalsTab } from '@/components/student/settings/StudentGoalsTab'
 import { StudentNotificationsTab } from '@/components/student/settings/StudentNotificationsTab'
 import { GoalsCard } from '@/components/student/home/GoalsCard'
 import { StudentGoalsStaffBlock } from '@/components/student/StudentGoalsStaffBlock'
 
-beforeEach(() => { st.prefs = null; st.linked = false; st.rpc = {}; st.exam = [] })
+beforeEach(() => { st.prefs = null; st.linked = false; st.rpc = {}; st.exam = []; st.calls = [] })
 
 describe('уведомления ученика', () => {
   it('группы «Домашние задания», «Пробники», «Подписка», «Каналы»; занятий и достижений нет', async () => {
@@ -106,5 +112,22 @@ describe('цели у преподавателя (только чтение)', (
     expect(screen.getByTestId('student-goals-staff-summary')).toHaveTextContent('выполнено 1 из 2')
     expect(within(screen.getByTestId('student-goals-history')).getAllByText(/\d\/2/)).toHaveLength(8)
     expect(screen.queryByRole('button')).toBeNull()
+  })
+})
+
+
+describe('учебные цели в настройках ученика', () => {
+  it('оставляет цель на экзамен без загрузки и редактирования недельных целей', async () => {
+    st.exam = [{ subject: 'physics', goal: 80 }]
+    render(<StudentGoalsTab profileId="p1" />)
+    const exam = await screen.findByTestId('student-exam-goal-physics')
+    expect(exam).toHaveTextContent('80+')
+    expect(screen.queryByText('Цели недели')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('student-weekly-editor')).not.toBeInTheDocument()
+    expect(st.calls).not.toContain('my_weekly_goals')
+    fireEvent.click(within(exam).getByRole('button', { name: '90+' }))
+    await waitFor(() => expect(within(exam).getByRole('button', { name: '90+' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(st.calls).toContain('set_my_exam_goal')
+    expect(st.calls).not.toContain('set_my_weekly_goals')
   })
 })

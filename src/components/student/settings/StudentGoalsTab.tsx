@@ -1,28 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchMyScoreForecast, forecastHint, forecastNote, type StoredForecast } from '@/lib/scoreForecast'
-import { CalendarCheck, Loader2, Target } from 'lucide-react'
+import { Loader2, Target } from 'lucide-react'
 import { useStudentDashboard } from '@/hooks/useStudentDashboard'
-import { WeeklyGoalsEditor } from '@/components/goals/WeeklyGoalsEditor'
 import {
   EXAM_PRESETS, SUBJECT_ACC, SUBJECT_LABEL,
-  NO_GOALS, WEEKLY_KINDS, fetchMyExamGoals, fetchMyWeeklyGoals, setMyExamGoal, setMyWeeklyGoals, weeklyGoalTitle, weeklyProgressLabel,
-  type ExamGoal, type GoalNumbers, type GoalSubject, type MyWeekly,
+  fetchMyExamGoals, setMyExamGoal,
+  type ExamGoal, type GoalSubject,
 } from '@/lib/studentGoals'
 
 /**
  * «Настройки → Учебные цели» (письмо ЛК_стиль_настройки_ученика.md, 16.10;
- * два уровня — решение владельца 16.10, заменяет вариант «цель-тема»).
+ * цель на экзамен).
  *
  *  · Цель на экзамен по каждому предмету своих курсов ЕГЭ: 60+ / 70+ / 80+ /
  *    90+ / свой балл (`set_my_exam_goal`).
- *  · Цели недели — ставит сам ученик (правка письма 16.10 17:45): 1–3
- *    стандартные цели кнопками; изменения — со следующего понедельника.
  *
  * Прежние поля «Экзамен / Предмет / Целевой балл» (students.target_*) отсюда
  * убраны: цель на экзамен теперь одна — `student_exam_goals`.
  */
 const btn = (on: boolean) => on ? 'stu-pick is-on' : 'stu-pick'
-const dayMonth = (d: string) => new Date(d.slice(0, 10) + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
 
 export function StudentGoalsTab({ profileId }: { profileId: string }) {
   const dash = useStudentDashboard(profileId)
@@ -35,9 +31,6 @@ export function StudentGoalsTab({ profileId }: { profileId: string }) {
   }, [dash.courses])
 
   const [exam, setExam] = useState<ExamGoal[] | null>(null)
-  const [weekly, setWeekly] = useState<MyWeekly | null>(null)
-  const [draft, setDraft] = useState<GoalNumbers | null>(null)
-  const [savedMsg, setSavedMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [custom, setCustom] = useState<Partial<Record<GoalSubject, string>>>({})
@@ -49,27 +42,8 @@ export function StudentGoalsTab({ profileId }: { profileId: string }) {
     let cancelled = false
     fetchMyExamGoals(profileId).then(g => { if (!cancelled) setExam(g) })
     fetchMyScoreForecast().then(f => { if (!cancelled) setForecast(f) })
-    fetchMyWeeklyGoals().then(r => {
-      if (cancelled) return
-      const w = r.data ?? { current: null, next: null, goals: [] }
-      setWeekly(w)
-      setDraft(w.next?.nums ?? w.current ?? NO_GOALS)
-    })
     return () => { cancelled = true }
   }, [profileId])
-
-  async function saveWeekly() {
-    if (!draft) return
-    setBusy(true)
-    const res = await setMyWeeklyGoals(draft)
-    setBusy(false)
-    if (res.error) { setError(res.error); return }
-    setError(null)
-    const r = await fetchMyWeeklyGoals()
-    if (r.data) setWeekly(r.data)
-    const thisWeek = r.data && !r.data.next
-    setSavedMsg(thisWeek ? 'Сохранено — действуют с этой недели' : `Сохранено — новые цели с понедельника ${res.validFrom ? dayMonth(res.validFrom) : ''}`.trim())
-  }
 
   async function pickExam(subject: GoalSubject, goal: number | null) {
     if (goal != null && (goal < 1 || goal > 100)) { setError('Балл — от 1 до 100'); return }
@@ -124,53 +98,6 @@ export function StudentGoalsTab({ profileId }: { profileId: string }) {
         })}
       </section>
 
-      <section className="stu-card stu-set" data-testid="student-weekly-goals">
-        <h2 className="stu-set-h"><CalendarCheck size={18} aria-hidden />Цели недели</h2>
-        <p className="stu-muted text-[13.5px]">
-          Выбери 1–3 цели и число. Повторяются каждую неделю (пн–вс), пока не поменяешь; изменения — со следующего понедельника.
-          Цели видит твой преподаватель.
-        </p>
-        {weekly == null || draft == null ? (
-          <p className="stu-muted flex items-center gap-2 text-[14px]"><Loader2 size={14} className="animate-spin" />Загрузка…</p>
-        ) : (
-          <>
-            {weekly.goals.length > 0 && (
-              <div className="stu-set-rows" data-testid="student-weekly-progress">
-                {weekly.goals.map(g => (
-                  <div key={g.kind} className="stu-set-row" data-testid="student-weekly-goal">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[14.5px] font-semibold">{weeklyGoalTitle(g.kind, g.target)}</div>
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="stu-step-t flex-1"><i className="d" style={{ width: `${Math.min(100, (g.progress / g.target) * 100)}%` }} /></span>
-                        <span className={g.done ? 'stu-tag t-green' : 'stu-muted text-[13px] font-semibold'}>{g.done ? 'выполнено' : weeklyProgressLabel(g)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="stu-goal-form" data-testid="student-weekly-editor">
-              <WeeklyGoalsEditor value={draft} onChange={v => { setDraft(v); setSavedMsg(null) }} disabled={busy} />
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  className="stu-btn stu-btn-p stu-btn-sm"
-                  disabled={busy || WEEKLY_KINDS.every(k => draft[k] === (weekly.next?.nums ?? weekly.current ?? NO_GOALS)[k])}
-                  onClick={() => void saveWeekly()}
-                  data-testid="student-weekly-save"
-                >
-                  Сохранить цели
-                </button>
-                {(savedMsg || weekly.next) && (
-                  <span className="stu-muted text-[13px]" data-testid="student-weekly-next">
-                    {savedMsg ?? `Новые цели — с понедельника ${dayMonth(weekly.next!.validFrom)}`}
-                  </span>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-      </section>
       {error && <p className="text-[13px] font-semibold text-[var(--redInk)]" role="alert">{error}</p>}
     </div>
   )

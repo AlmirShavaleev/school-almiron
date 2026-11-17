@@ -57,15 +57,9 @@ vi.mock('@/store/authStore', () => {
 vi.mock('@/components/shared/TelegramOnboarding', () => ({
   TelegramOnboarding: ({ compact }: { compact?: boolean }) => <div data-testid="tg-line" data-compact={compact || undefined} />,
 }))
-const hw = vi.hoisted(() => ({
-  todo: [] as Array<Record<string, unknown>>,
-}))
+const homeworkLoad = vi.hoisted(() => vi.fn())
 vi.mock('@/hooks/useMyTopicHomework', () => ({
-  useMyTopicHomework: () => ({
-    buckets: { todo: hw.todo },
-    loading: false,
-    topicLink: (r: { topic_id: string }) => `/my-course/g1/topic/${r.topic_id}`,
-  }),
+  useMyTopicHomework: homeworkLoad,
 }))
 const topic = (id: string, title: string, extra: Record<string, unknown> = {}) => ({
   id, title, kind: 'lesson', hw_id: `hw-${id}`, hw_status: null, hw_due_at: null, available_from: null, is_open: true, progress: null, ...extra,
@@ -96,7 +90,7 @@ async function renderHome() {
   await screen.findByTestId('hero-continue')
 }
 
-beforeEach(() => { calls.length = 0; hw.todo = []; try { localStorage.clear() } catch { /* нет */ } })
+beforeEach(() => { calls.length = 0; homeworkLoad.mockClear(); try { localStorage.clear() } catch { /* нет */ } })
 
 describe('главная ученика «как в Notion»', () => {
   it('шапка: обложка, «Имя · подготовка к ЕГЭ», свойства — цель, курс, серия; Telegram строкой', async () => {
@@ -155,15 +149,15 @@ describe('главная ученика «как в Notion»', () => {
     delete RPC.student_home_activity
   })
 
-  it('«Цели недели» и «Сегодня» — списками с галочками: ДЗ к сдаче и следующий урок', async () => {
-    hw.todo = [{ homework_id: 'h1', topic_id: 't4', topic_title: 'Сила', is_overdue: true }]
+  it('не показывает недельные цели и «Сегодня» и не загружает их данные', async () => {
     await renderHome()
-    const goals = await screen.findAllByTestId('home-weekly-goal')
-    expect(goals).toHaveLength(2)
-    expect(goals[1]).toHaveAttribute('data-done', 'true')
-    const today = screen.getAllByTestId('home-today-item')
-    expect(today.map(t => t.textContent)).toEqual(['Сдать ДЗ «Сила»просрочено', 'Урок «Второй закон Ньютона»урок'])
-    expect(within(today[0]).getByRole('link')).toHaveAttribute('href', '/my-course/g1/topic/t4')
+    await waitFor(() => expect(screen.getByTestId('forecast-physics-value')).toHaveTextContent('58–70'))
+    expect(screen.queryByText('Цели недели')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Сегодня' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('home-weekly-goal')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('home-today-item')).not.toBeInTheDocument()
+    expect(calls).not.toContain('rpc:my_weekly_goals')
+    expect(homeworkLoad).not.toHaveBeenCalled()
   })
 
   it('«Продолжить»: три урока со следующего, замок — как в плитках курса; закрытый не ведёт', async () => {
@@ -190,12 +184,12 @@ describe('главная ученика «как в Notion»', () => {
       expect(screen.queryByText(text)).toBeNull()
     }
     await waitFor(() => expect(calls).toContain('rpc:student_home_activity'))
-    await waitFor(() => expect(calls).toContain('rpc:my_weekly_goals'))
+    expect(calls).not.toContain('rpc:my_weekly_goals')
     const uniq = [...new Set(calls)].sort()
     for (const c of uniq) {
       expect([
         'from:group_students', 'from:student_exam_goals', 'from:students',
-        'rpc:my_course_demo', 'rpc:my_mock_exams', 'rpc:my_score_forecast', 'rpc:my_subscriptions', 'rpc:my_weekly_goals',
+        'rpc:my_course_demo', 'rpc:my_mock_exams', 'rpc:my_score_forecast', 'rpc:my_subscriptions',
         'rpc:student_home_activity', 'rpc:student_home_courses', 'rpc:subscriptions_enabled',
       ]).toContain(c)
     }

@@ -14,18 +14,15 @@ import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
 import { SubscriptionPathCard } from '@/components/student/home/SubscriptionPathCard'
 import { DiagnosticHomeCard } from '@/components/student/home/DiagnosticHomeCard'
-import { GoalsCard } from '@/components/student/home/GoalsCard'
 import { CourseChip, HomeCoverBlock, HomeTitle, type HomeProp } from '@/components/student/home/HomeNotionHead'
 import { ClockWidget, ExamWidget, MonthWidget } from '@/components/student/home/HomeWidgets'
-import { HomeToday, type TodayItem } from '@/components/student/home/HomeToday'
 import { HomeContinue } from '@/components/student/home/HomeContinue'
 import { TelegramOnboarding } from '@/components/shared/TelegramOnboarding'
 import { EXAM_DAYS, examWidget } from '@/lib/examDates'
 import { activityDaysFor, streakValue } from '@/lib/homeNotion'
-import { fetchMyExamGoals, fetchMyWeeklyGoals, goalBasis, type ExamGoal, type WeeklyGoal } from '@/lib/studentGoals'
+import { fetchMyExamGoals, goalBasis, type ExamGoal } from '@/lib/studentGoals'
 import { useMySubscriptionsLite } from '@/hooks/useMySubscriptionsLite'
 import { subscriptionTag } from '@/lib/studentNav'
-import { useMyTopicHomework } from '@/hooks/useMyTopicHomework'
 import { useMyForecastRanges } from '@/hooks/useMyForecastRanges'
 import { ForecastCard } from '@/components/student/ForecastCard'
 import { fetchMyScoreForecast, forecastHint, forecastNote, type StoredForecast } from '@/lib/scoreForecast'
@@ -42,15 +39,11 @@ import { fetchMyScoreForecast, forecastHint, forecastNote, type StoredForecast }
  *     как раньше;
  *  4. три виджета: «До ЕГЭ» (даты — src/lib/examDates.ts), часы с фразой дня,
  *     мини-календарь месяца посещений (та же `student_home_activity`);
- *  5. «Цели недели» и «Сегодня» (ДЗ к сдаче, следующий урок) — списками с
- *     галочками; «Продолжить» — три урока с тем же статусом и замком, что в
- *     плитках курса;
+ *  5. «Продолжить» — три урока с тем же статусом и замком, что в плитках курса;
  *  6. «Мои курсы».
  *
- * Данные и подсчёты — прежние источники; новых RPC нет. Добавились чтения,
- * которые уже делают соседние экраны: «Мои подписки» (как метка в меню),
- * журнал ДЗ (как счётчик «ДЗ» в меню) и программа главного курса (как
- * страница курса) — для «Сегодня» и «Продолжить».
+ * Недельные цели и список «Сегодня» отключены: главная не загружает
+ * недельный прогресс и журнал ДЗ для этих блоков.
  */
 export function StudentDashboard() {
   const profile = useAuthStore(s => s.profile)
@@ -82,16 +75,16 @@ export function StudentDashboard() {
   // Календарь месяца листает до 3 месяцев назад — история с 1-го числа.
   const activity = useStudentActivity(!!profile?.id, todayMsk, activityDaysFor(todayMsk))
 
-  // Цели: на экзамен — в строке свойств, недели — списком. Читаются один раз.
+  // Цель на экзамен — в строке свойств. Читается один раз.
   // Прогноз балла — хранимый (forecast-daily, письмо 16.10): простой select, без пересчёта в браузере.
-  const [goals, setGoals] = useState<{ exam: ExamGoal[]; weekly: WeeklyGoal[]; forecast: StoredForecast[] | null } | null>(null)
+  const [goals, setGoals] = useState<{ exam: ExamGoal[]; forecast: StoredForecast[] | null } | null>(null)
   const hasCourses = courses.length > 0
   useEffect(() => {
     if (!profile?.id || !hasCourses) return
     let alive = true
-    Promise.all([fetchMyExamGoals(profile.id), fetchMyWeeklyGoals(), fetchMyScoreForecast()])
-      .then(([exam, w, forecast]) => { if (alive) setGoals({ exam, weekly: w.data?.goals ?? [], forecast }) })
-      .catch(() => { if (alive) setGoals({ exam: [], weekly: [], forecast: null }) })
+    Promise.all([fetchMyExamGoals(profile.id), fetchMyScoreForecast()])
+      .then(([exam, forecast]) => { if (alive) setGoals({ exam, forecast }) })
+      .catch(() => { if (alive) setGoals({ exam: [], forecast: null }) })
     return () => { alive = false }
   }, [profile?.id, hasCourses])
 
@@ -106,25 +99,6 @@ export function StudentDashboard() {
   const ranges = useMyForecastRanges(forecastSubjects.length > 0 && goals !== null, goals?.forecast)
 
   const mySubs = useMySubscriptionsLite(subscriptionsOn.enabled)
-  const hw = useMyTopicHomework(null)
-  const { buckets, topicLink } = hw
-
-  const today = useMemo<TodayItem[]>(() => {
-    const out: TodayItem[] = buckets.todo.slice(0, 3).map(r => ({
-      key: `hw-${r.homework_id}`,
-      text: `Сдать ДЗ «${r.topic_title}»`,
-      to: topicLink(r),
-      pill: r.is_overdue ? 'просрочено' : 'ДЗ',
-      tone: r.is_overdue ? 'bad' : 'hw',
-    }))
-    if (next && !buckets.todo.some(r => r.topic_id === next.next.topicId)) {
-      out.push({
-        key: `lesson-${next.next.topicId}`, text: `Урок «${next.next.title}»`,
-        to: continueHref(next.course.groupId, next.next), pill: 'урок', tone: 'lesson',
-      })
-    }
-    return out
-  }, [buckets.todo, topicLink, next])
 
   if (path.data?.onboarding.needed) return <Navigate to="/start" replace />
 
@@ -215,13 +189,6 @@ export function StudentDashboard() {
           </section>
         )}
       </div>
-
-      {hasCourses && (
-        <div className="stu-ntwo">
-          {goals && <GoalsCard weekly={goals.weekly} />}
-          <HomeToday items={today} loading={hw.loading} />
-        </div>
-      )}
 
       {next && (
         <HomeContinue groupId={next.course.groupId} courseId={next.course.courseId} courseTitle={next.course.courseTitle} nextTopicId={next.next.topicId} />
