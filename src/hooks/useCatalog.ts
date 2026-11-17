@@ -1056,7 +1056,11 @@ export function useCatalogTasksBatch(taskIds: string[]) {
 /** Поиск выводит только номер и короткий фрагмент условия. Полная карточка
  * (и серверно защищённые ответы) загружается при открытии задачи, не раньше.
  */
-export interface CatalogSearchResult extends Pick<CatalogTask, 'id' | 'external_id' | 'section_id' | 'statement_html'> {
+export interface CatalogSearchResult extends CatalogTask {
+  hasTopicAssigned?: boolean
+}
+
+export interface CatalogSearchPreviewResult extends Pick<CatalogTask, 'id' | 'external_id' | 'section_id' | 'statement_html'> {
   hasTopicAssigned?: boolean
 }
 
@@ -1065,7 +1069,7 @@ const CATALOG_SEARCH_STAFF_ROLES = new Set(['teacher', 'curator', 'admin', 'owne
 
 export function useCatalogSearchPreview(query: string, sectionId: string | undefined, enabled = true) {
   const { profile } = useAuthStore()
-  const [results, setResults] = useState<CatalogSearchResult[]>([])
+  const [results, setResults] = useState<CatalogSearchPreviewResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1085,7 +1089,7 @@ export function useCatalogSearchPreview(query: string, sectionId: string | undef
       try {
         // Точный номер сначала ищем по external_id, затем (если нет) по тексту.
         const isNum = /^\d+$/.test(q)
-        let data: CatalogSearchResult[] | null = null
+        let data: CatalogSearchPreviewResult[] | null = null
         let err: { message?: string } | null = null
 
         if (isNum) {
