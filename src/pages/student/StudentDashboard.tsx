@@ -28,6 +28,14 @@ import { ForecastCard } from '@/components/student/ForecastCard'
 import { fetchMyScoreForecast, forecastHint, forecastNote, type StoredForecast } from '@/lib/scoreForecast'
 
 /**
+ * ВРЕМЕННО, инцидент 18.11.2026: production не загружает тяжёлую
+ * статистику главной (календарь активности / прогноз баллов), пока
+ * восстанавливаем производительность базы. В dev/test виджеты остаются.
+ * Откат: заменить false на true для production.
+ */
+const ENABLE_HEAVY_STUDENT_HOME_STATS = !import.meta.env.PROD
+
+/**
  * Главная ученика «как в Notion» в стиле лендинга (письмо
  * ЛК_стиль_главная_как_notion.md, 16.10; до того — «без шума», 13.10, и стиль
  * лендинга, 14.10). Сверху вниз:
@@ -73,7 +81,7 @@ export function StudentDashboard() {
   }, [courses, progress])
 
   // Календарь месяца листает до 3 месяцев назад — история с 1-го числа.
-  const activity = useStudentActivity(!!profile?.id, todayMsk, activityDaysFor(todayMsk))
+  const activity = useStudentActivity(ENABLE_HEAVY_STUDENT_HOME_STATS && !!profile?.id, todayMsk, activityDaysFor(todayMsk))
 
   // Цель на экзамен — в строке свойств. Читается один раз.
   // Прогноз балла — хранимый (forecast-daily, письмо 16.10): простой select, без пересчёта в браузере.
@@ -82,7 +90,7 @@ export function StudentDashboard() {
   useEffect(() => {
     if (!profile?.id || !hasCourses) return
     let alive = true
-    Promise.all([fetchMyExamGoals(profile.id), fetchMyScoreForecast()])
+    Promise.all([fetchMyExamGoals(profile.id), ENABLE_HEAVY_STUDENT_HOME_STATS ? fetchMyScoreForecast() : Promise.resolve(null)])
       .then(([exam, forecast]) => { if (alive) setGoals({ exam, forecast }) })
       .catch(() => { if (alive) setGoals({ exam: [], forecast: null }) })
     return () => { alive = false }
@@ -96,7 +104,7 @@ export function StudentDashboard() {
   // Goal caption and forecast widget share the same stored-forecast result.
   // Wait for the noncritical goals batch instead of firing a duplicate RPC
   // during the initial student-home request burst.
-  const ranges = useMyForecastRanges(forecastSubjects.length > 0 && goals !== null, goals?.forecast)
+  const ranges = useMyForecastRanges(ENABLE_HEAVY_STUDENT_HOME_STATS && forecastSubjects.length > 0 && goals !== null, goals?.forecast)
 
   const mySubs = useMySubscriptionsLite(subscriptionsOn.enabled)
 
@@ -177,11 +185,11 @@ export function StudentDashboard() {
         </p>
       )}
 
-      <div className={forecastSubjects.length > 0 && activity ? 'stu-widgets has-fc' : 'stu-widgets'} data-testid="home-widgets">
+      <div className={ENABLE_HEAVY_STUDENT_HOME_STATS && forecastSubjects.length > 0 && activity ? 'stu-widgets has-fc' : 'stu-widgets'} data-testid="home-widgets">
         <ExamWidget data={examData} fallback={examData ? null : countdown} />
         <ClockWidget today={todayMsk} />
         {activity && <MonthWidget grid={activity} today={todayMsk} />}
-        {forecastSubjects.length > 0 && (
+        {ENABLE_HEAVY_STUDENT_HOME_STATS && forecastSubjects.length > 0 && (
           <section className="stu-card stu-w stu-w-fc" data-testid="home-w-forecast">
             {forecastSubjects.map(sub => (
               <ForecastCard key={sub} subject={sub} range={ranges?.find(r => r.subject === sub)} loading={ranges == null} />
