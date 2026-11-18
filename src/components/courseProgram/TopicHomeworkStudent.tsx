@@ -119,7 +119,7 @@ export function TopicHomeworkStudent({
   const coarse = useCoarsePointer()
   const [busy, setBusy] = useState(false)
   const [confirmPartial, setConfirmPartial] = useState(false)
-  const [openPhotoNumber, setOpenPhotoNumber] = useState<string | null>(null)
+  const [activePhotoNumber, setActivePhotoNumber] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([])
   const uploadingFiles = uploads.length > 0
@@ -253,7 +253,7 @@ export function TopicHomeworkStudent({
     return () => document.removeEventListener('paste', onPaste)
   }, [draftAttemptId, draftHasPhotoTasks, uploadingFiles, uploadPicked])
 
-  if (loading && (!openPhotoNumber || !homework)) {
+  if (loading && (!activePhotoNumber || !homework)) {
     return (
       <div className={cn('flex items-center gap-2 py-6 text-sm text-gray-400', className)}>
         <Loader2 size={16} className="animate-spin" />
@@ -272,11 +272,17 @@ export function TopicHomeworkStudent({
   const photoNumbers = (existingAttempt ? existingAttempt.photo_task_numbers : homework.photo_task_numbers) ?? []
   const photoMode = photoNumbers.length > 0
   const photoFiles = active ? draftFiles : accepted ? attemptFiles.filter(file => file.attempt_id === accepted.id) : []
-  const missingPhotoCount = missingHomeworkPhotoNumbers(photoNumbers, photoFiles).length
-  const selectedNumber = openPhotoNumber && photoNumbers.includes(openPhotoNumber) ? openPhotoNumber : null
+  const missingPhotoNumbers = missingHomeworkPhotoNumbers(photoNumbers, photoFiles)
+  const missingPhotoCount = missingPhotoNumbers.length
+  const selectedNumber = activePhotoNumber && photoNumbers.includes(activePhotoNumber)
+    ? activePhotoNumber
+    : (missingPhotoNumbers[0] ?? photoNumbers[0])
   const remainingWorksheet = worksheetMaterials.filter(material => !photoNumbers.includes(worksheetNumber(material.title) ?? ''))
   const selectedMaterials = selectedNumber ? worksheetMaterials.filter(material => worksheetNumber(material.title) === selectedNumber) : []
-  const modalWorksheet = selectedMaterials.length > 0 ? selectedMaterials : remainingWorksheet.filter(material => !worksheetNumber(material.title))
+  const selectedWorksheet = selectedMaterials.length > 0 ? selectedMaterials : remainingWorksheet.filter(material => {
+    const number = worksheetNumber(material.title)
+    return !number || (material.kind === 'file' && selectedNumber?.startsWith(number + '.'))
+  })
   const photoFeedback = (
     <>
       {uploadingFiles && (
@@ -631,7 +637,7 @@ export function TopicHomeworkStudent({
             numbers={photoNumbers}
             files={photoFiles}
             selected={selectedNumber}
-            condition={modalWorksheet.length > 0 ? modalWorksheet.map(material => (
+            condition={selectedWorksheet.length > 0 ? selectedWorksheet.map(material => (
               <TopicMaterialContent key={material.id} material={material} topicId={topicId} countView={!preview} />
             )) : taskFile ? (
               <SignedFileLink bucket={TOPIC_HOMEWORK_BUCKET} url={taskFile.storage_path} className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary-700">
@@ -642,16 +648,18 @@ export function TopicHomeworkStudent({
             readOnly={!!accepted || (!!active && active.status !== 'draft')}
             disabled={busy || loading || uploadingFiles || preview}
             onSelect={number => {
-              setOpenPhotoNumber(number)
-              if (number && !uploadingFiles) {
+              setActivePhotoNumber(number)
+              if (!uploadingFiles) {
                 setRejected([])
                 setLocalError(null)
               }
             }}
-            onPick={(number, picked) => uploadPicked(draftAttemptId, picked, { photoTaskNumber: number })}
+            onPick={(number, picked) => {
+              setActivePhotoNumber(number)
+              return uploadPicked(draftAttemptId, picked, { photoTaskNumber: number })
+            }}
             onDelete={file => run(() => removeAttemptFile(file.id, file.storage_path))}
           />
-          {!selectedNumber && photoFeedback}
           {!accepted && (!active || active.status === 'draft') && (
             <Button
               data-testid="hw-submit-attempt"
@@ -661,7 +669,7 @@ export function TopicHomeworkStudent({
                 else submitPhotos(false)
               }}
               loading={busy}
-              disabled={uploadingFiles || preview}
+              disabled={loading || uploadingFiles || preview}
             >
               Сдать работу
             </Button>

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import type {
@@ -680,27 +680,7 @@ describe('ДЗ ученику — файлы не того формата (§173
 })
 
 describe('Домашнее задание с фото по номерам', () => {
-  const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal')
-  const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close')
-
-  beforeAll(() => {
-    if (!originalShowModal) {
-      Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
-        configurable: true, value(this: HTMLDialogElement) { this.open = true },
-      })
-    }
-    if (!originalClose) {
-      Object.defineProperty(HTMLDialogElement.prototype, 'close', {
-        configurable: true, value(this: HTMLDialogElement) { this.open = false },
-      })
-    }
-  })
-  afterAll(() => {
-    if (!originalShowModal) Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal')
-    if (!originalClose) Reflect.deleteProperty(HTMLDialogElement.prototype, 'close')
-  })
-
-  it('показывает условие выбранного номера и оба способа приложить фото в его окне', () => {
+  it('показывает условие выбранного номера и оба способа приложить фото под условием на странице', () => {
     homework = { ...hw(), photo_task_numbers: ['14.1', '14.2'] }
     render(<TopicHomeworkStudent topicId={TOPIC} worksheetMaterials={[
       { id: 'm1', kind: 'text', title: 'Задание №14.1', content: 'Условие первого номера', position: 0, isVisible: true, section: 'worksheet_homework' },
@@ -708,16 +688,22 @@ describe('Домашнее задание с фото по номерам', () =
       { id: 'm3', kind: 'text', title: '№14.3', content: 'Остальное условие', position: 2, isVisible: true, section: 'worksheet_homework' },
     ]} />)
 
-    expect(screen.queryByText('Условие первого номера')).not.toBeInTheDocument()
+    const first = within(screen.getByRole('article', { name: 'Задание №14.1' }))
+    expect(first.getByText('Условие первого номера')).toBeInTheDocument()
+    expect(first.getByLabelText('Прикрепить фото для задания №14.1')).toHaveAttribute('multiple')
+    expect(first.getByLabelText('Сфотографировать решение для задания №14.1')).toHaveAttribute('capture', 'environment')
     expect(screen.getByText('Остальное условие')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Задание №14.1' }))
-    const dialog = within(screen.getByRole('dialog', { name: 'Задание №14.1' }))
-    expect(dialog.getByText('Условие первого номера')).toBeInTheDocument()
-    expect(dialog.queryByText('Условие второго номера')).not.toBeInTheDocument()
-    expect(dialog.getByLabelText('Загрузить фото решения для задания №14.1')).toHaveAttribute('multiple')
-    expect(dialog.getByLabelText('Снять фото для задания №14.1')).toHaveAttribute('capture', 'environment')
-    fireEvent.click(dialog.getByRole('button', { name: 'Закрыть задание' }))
+
+    const secondButton = screen.getByRole('button', { name: 'Задание №14.2' })
+    fireEvent.click(secondButton)
+    expect(secondButton).toHaveAttribute('aria-current', 'step')
+    const second = within(screen.getByRole('article', { name: 'Задание №14.2' }))
+    expect(second.getByText('Условие второго номера')).toBeInTheDocument()
+    expect(second.getByLabelText('Прикрепить фото для задания №14.2')).toBeInTheDocument()
+    expect(screen.queryByText('Условие первого номера')).not.toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(screen.getByRole('article', { name: 'Задание №14.1' })).toBeInTheDocument()
   })
 
   it('сохраняет первое фото в новом черновике и ждёт явной сдачи', async () => {
@@ -729,7 +715,7 @@ describe('Домашнее задание с фото по номерам', () =
 
     fireEvent.click(screen.getByRole('button', { name: 'Задание №2' }))
     const photo = new File(['solution'], 'solution.jpg', { type: 'image/jpeg' })
-    fireEvent.change(screen.getByLabelText('Загрузить фото решения для задания №2'), {
+    fireEvent.change(screen.getByLabelText('Прикрепить фото для задания №2'), {
       target: { files: [photo] },
     })
     await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledWith('att-new', [photo], expect.any(Function), '2'))
@@ -746,8 +732,7 @@ describe('Домашнее задание с фото по номерам', () =
     }]
     rerender(<TopicHomeworkStudent topicId={TOPIC} onSubmitted={onSubmitted} />)
     expect(screen.getByText('1 из 2 номеров')).toBeInTheDocument()
-    expect(screen.getByRole('dialog', { name: 'Задание №2' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть задание' }))
+    expect(screen.getByRole('article', { name: 'Задание №2' })).toBeInTheDocument()
     fireEvent.click(submit)
     expect(screen.getByRole('dialog')).toHaveTextContent('Без решения: 1 задание из 2.')
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить решать' }))
@@ -764,8 +749,8 @@ describe('Домашнее задание с фото по номерам', () =
     rerender(<TopicHomeworkStudent topicId={TOPIC} />)
     expect(screen.getByText('Работа сдана')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Задание №2, фото приложено' }))
-    expect(screen.getByRole('dialog', { name: 'Задание №2' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Загрузить фото решения для задания №2')).not.toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Задание №2' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Прикрепить фото для задания №2')).not.toBeInTheDocument()
   })
 
   it('отправляет неполную работу только после подтверждения', async () => {
@@ -788,7 +773,7 @@ describe('Домашнее задание с фото по номерам', () =
     renderStudent()
     fireEvent.click(screen.getByRole('button', { name: 'Задание №2' }))
     const pdf = new File(['solution'], 'solution.pdf', { type: 'application/pdf' })
-    fireEvent.change(screen.getByLabelText('Загрузить фото решения для задания №2'), {
+    fireEvent.change(screen.getByLabelText('Прикрепить фото для задания №2'), {
       target: { files: [pdf] },
     })
     expect(screen.getByRole('alert')).toHaveTextContent('Для этого номера загрузите фото решения.')
