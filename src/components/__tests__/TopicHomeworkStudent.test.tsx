@@ -682,7 +682,8 @@ describe('ДЗ ученику — файлы не того формата (§173
 describe('Домашнее задание с фото по номерам', () => {
   it('сохраняет первое фото в новом черновике и ждёт явной сдачи', async () => {
     homework = { ...hw(), photo_task_numbers: ['2', '4'] }
-    const { rerender } = renderStudent()
+    const onSubmitted = vi.fn()
+    const { rerender } = render(<TopicHomeworkStudent topicId={TOPIC} onSubmitted={onSubmitted} />)
     const submit = screen.getByRole('button', { name: 'Сдать работу' })
     expect(submit).toBeEnabled()
 
@@ -694,13 +695,15 @@ describe('Домашнее задание с фото по номерам', () =
     expect(startAttempt).toHaveBeenCalledWith(false)
     expect(submitAttempt).not.toHaveBeenCalled()
 
+    expect(onSubmitted).not.toHaveBeenCalled()
+
     // Данные, возвращённые сервером при повторном входе в урок.
     attempts = [{ ...attempt(1, 'draft'), photo_task_numbers: ['2', '4'] }]
     attemptFiles = [{
       id: 'photo-2', attempt_id: 'att-1', storage_path: 'att-1/solution.jpg', file_name: 'solution.jpg',
       mime_type: 'image/jpeg', photo_task_number: '2', size_bytes: 8, position: 0, created_at: '',
     }]
-    rerender(<TopicHomeworkStudent topicId={TOPIC} />)
+    rerender(<TopicHomeworkStudent topicId={TOPIC} onSubmitted={onSubmitted} />)
     expect(screen.getByText('1 из 2 номеров')).toBeInTheDocument()
     fireEvent.click(submit)
     expect(screen.getByRole('dialog')).toHaveTextContent('Без решения: 1 задание из 2.')
@@ -708,10 +711,11 @@ describe('Домашнее задание с фото по номерам', () =
     expect(submitAttempt).not.toHaveBeenCalled()
 
     attemptFiles = [...attemptFiles, { ...attemptFiles[0], id: 'photo-4', photo_task_number: '4', position: 1 }]
-    rerender(<TopicHomeworkStudent topicId={TOPIC} />)
+    rerender(<TopicHomeworkStudent topicId={TOPIC} onSubmitted={onSubmitted} />)
     expect(submit).toBeEnabled()
     fireEvent.click(submit)
     await waitFor(() => expect(submitAttempt).toHaveBeenCalledExactlyOnceWith('att-1', false))
+    expect(onSubmitted).toHaveBeenCalledTimes(1)
 
     attempts = [{ ...attempts[0], status: 'submitted' }]
     rerender(<TopicHomeworkStudent topicId={TOPIC} />)

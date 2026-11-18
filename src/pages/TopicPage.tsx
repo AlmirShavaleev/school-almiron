@@ -574,6 +574,11 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         tabs: row.sections as string[],
         groups: (row.group ? [row.group.key] : []) as TopicGroupKey[],
       })
+  if (hasPhotoSubmission) {
+    const sections = rawSegments.find(segment => segment.key === 'homework')?.tabs
+    const worksheetIndex = sections?.indexOf('worksheet_homework') ?? -1
+    if (sections && worksheetIndex > 0) sections.unshift(...sections.splice(worksheetIndex, 1))
+  }
   // «Задачи к уроку» — часть «Урока»: одна кнопка вместо двух. Порядок
   // разделов — учебный маршрут: Теория → Тренировка → Урок → ДЗ.
   const tasksSeg = rawSegments.find(sg => sg.key === 'tasks')
@@ -688,6 +693,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           )}
           <TopicHomeworkStudent
             topicId={topic.id}
+            onSubmitted={homeworkState.markSubmitted}
             // §239. После «Принято» разбор ведёт к вкладке «Решение ДЗ».
             solution={{ unlocked: solutionState.unlocked, hasSolution: solutionState.hasSolution }}
             onOpenSolution={() => {

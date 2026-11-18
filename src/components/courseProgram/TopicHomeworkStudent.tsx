@@ -88,7 +88,7 @@ export function CameraInput({
  * «Сдать заново» после принятия — это UX, а запрет держит триггер в БД.
  */
 export function TopicHomeworkStudent({
-  topicId, className, solution, onOpenSolution,
+  topicId, className, solution, onOpenSolution, onSubmitted,
 }: {
   topicId: string
   className?: string
@@ -99,6 +99,7 @@ export function TopicHomeworkStudent({
   solution?: { unlocked: boolean; hasSolution: boolean } | null
   /** §239. Переключить страницу темы на раздел «Решение ДЗ». */
   onOpenSolution?: () => void
+  onSubmitted?: () => void
 }) {
   // Предпросмотр глазами ученика (§178): блок в состоянии «не сдано», кнопка
   // сдачи видна, но выключена; хук в этой ветке попыток не читает и не пишет.
@@ -259,7 +260,8 @@ export function TopicHomeworkStudent({
   const accepted = acceptedAttempt(attempts)
   const taskFile = files[0] ?? null
   const draftFiles = active ? attemptFiles.filter(f => f.attempt_id === active.id) : []
-  const photoNumbers = (active ?? accepted)?.photo_task_numbers ?? (active || accepted ? [] : homework.photo_task_numbers ?? [])
+  const existingAttempt = active ?? accepted
+  const photoNumbers = (existingAttempt ? existingAttempt.photo_task_numbers : homework.photo_task_numbers) ?? []
   const photoMode = photoNumbers.length > 0
   const photoFiles = active ? draftFiles : accepted ? attemptFiles.filter(file => file.attempt_id === accepted.id) : []
   const missingPhotoCount = missingHomeworkPhotoNumbers(photoNumbers, photoFiles).length
@@ -275,6 +277,7 @@ export function TopicHomeworkStudent({
         if (!draftAttemptId) reload()
         throw error
       }
+      onSubmitted?.()
     })
   }
 

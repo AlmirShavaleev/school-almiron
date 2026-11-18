@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useMyStudentId } from '@/hooks/useMyTopicHomework'
 import { usePreviewMode } from '@/store/staffModeStore'
@@ -31,6 +31,7 @@ export function useMyTopicHomeworkState(topicId: string | null) {
   const [state, setState] = useState<TopicHomeworkState>('none')
   const [hasPhotoSubmission, setHasPhotoSubmission] = useState(false)
   const [loading, setLoading] = useState(true)
+  const markSubmitted = useCallback(() => setState('submitted'), [])
 
   useEffect(() => {
     setHasPhotoSubmission(false)
@@ -78,5 +79,5 @@ export function useMyTopicHomeworkState(topicId: string | null) {
     return () => { cancelled = true }
   }, [topicId, studentId, resolvingStudent, preview])
 
-  return { state, hasPhotoSubmission, loading: preview ? loading : loading || resolvingStudent }
+  return { state, hasPhotoSubmission, markSubmitted, loading: preview ? loading : loading || resolvingStudent }
 }
