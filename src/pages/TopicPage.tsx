@@ -406,6 +406,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   const availableTabs: TabKey[] = []
   // §240. Проверочная / контрольная: главное на странице — сама работа.
   const timed = isTimedKind(topic.kind)
+  const inlinePhotoWorksheet = hasPhotoSubmission && hasHomework && !timed
 
   // «Видео» стоит всегда, даже без видео: до перестройки на вкладки этот блок
   // с заглушкой «Видеоурок ещё не добавлен» был на странице постоянно, и его
@@ -574,11 +575,6 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         tabs: row.sections as string[],
         groups: (row.group ? [row.group.key] : []) as TopicGroupKey[],
       })
-  if (hasPhotoSubmission) {
-    const sections = rawSegments.find(segment => segment.key === 'homework')?.tabs
-    const worksheetIndex = sections?.indexOf('worksheet_homework') ?? -1
-    if (sections && worksheetIndex > 0) sections.unshift(...sections.splice(worksheetIndex, 1))
-  }
   // «Задачи к уроку» — часть «Урока»: одна кнопка вместо двух. Порядок
   // разделов — учебный маршрут: Теория → Тренировка → Урок → ДЗ.
   const tasksSeg = rawSegments.find(sg => sg.key === 'tasks')
@@ -692,7 +688,9 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
             <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
           )}
           <TopicHomeworkStudent
+            key={topic.id}
             topicId={topic.id}
+            worksheetMaterials={inlinePhotoWorksheet ? studentMaterials.filter(material => material.section === 'worksheet_homework') : undefined}
             onSubmitted={homeworkState.markSubmitted}
             // §239. После «Принято» разбор ведёт к вкладке «Решение ДЗ».
             solution={{ unlocked: solutionState.unlocked, hasSolution: solutionState.hasSolution }}
@@ -831,7 +829,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       ) : activeSeg && !reviewOpen ? (
         // Владелец 15.10: рубрики раздела — подряд, без подвкладок.
         <div className="space-y-4" data-testid="topic-section-stack">
-          {activeSeg.tabs.map(k => (
+          {activeSeg.tabs.filter(key => !inlinePhotoWorksheet || key !== 'worksheet_homework').map(k => (
             <div key={k} data-testid={`topic-section-${k}`}>{renderSection(k as TabKey)}</div>
           ))}
         </div>

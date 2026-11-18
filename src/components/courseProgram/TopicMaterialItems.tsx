@@ -50,24 +50,23 @@ const isTheoryMaterial = (m: TopicMaterial) => m.kind === 'text' && isTheoryMark
 // ─── Одна карточка материала ──────────────────────────────────────────────────
 
 function MaterialCard({
-  material, topicId, canManage, countView, watchMark, isFirst, isLast,
+  material, topicId, canManage = false, countView, watchMark, isFirst = false, isLast = false,
   onDelete, onToggleVisibility, onMove,
 }: {
   material: TopicMaterial
   topicId: string
-  canManage: boolean
+  canManage?: boolean
   /** Считать открытие файла (§107): ученик — да, персонал и предпросмотр — нет. */
   countView: boolean
   /** Уже записанный просмотр этого видео (§204); undefined — записи нет. */
   watchMark?: VideoWatchMark
-  isFirst: boolean
-  isLast: boolean
-  onDelete: (id: string) => void
-  onToggleVisibility: (id: string, next: boolean) => void
-  onMove: (id: string, direction: 'up' | 'down') => void
+  isFirst?: boolean
+  isLast?: boolean
+  onDelete?: (id: string) => void
+  onToggleVisibility?: (id: string, next: boolean) => void
+  onMove?: (id: string, direction: 'up' | 'down') => void
 }) {
   const Icon = KIND_ICON[material.kind]
-  const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
 
   // У файла без своего названия шапка «Файл» дублирует плитку с именем файла —
   // ученику её не показываем. Преподавателю показываем всегда: в ней живут
@@ -112,7 +111,7 @@ function MaterialCard({
           <>
             <button
               type="button"
-              onClick={() => onMove(material.id, 'up')}
+              onClick={() => onMove?.(material.id, 'up')}
               disabled={isFirst}
               aria-label="Поднять выше"
               title="Поднять выше"
@@ -122,7 +121,7 @@ function MaterialCard({
             </button>
             <button
               type="button"
-              onClick={() => onMove(material.id, 'down')}
+              onClick={() => onMove?.(material.id, 'down')}
               disabled={isLast}
               aria-label="Опустить ниже"
               title="Опустить ниже"
@@ -132,7 +131,7 @@ function MaterialCard({
             </button>
             <button
               type="button"
-              onClick={() => onToggleVisibility(material.id, !material.isVisible)}
+              onClick={() => onToggleVisibility?.(material.id, !material.isVisible)}
               aria-label={material.isVisible ? 'Скрыть материал' : 'Показать материал'}
               title={material.isVisible ? 'Скрыть от учеников' : 'Показать ученикам'}
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-primary-600"
@@ -141,7 +140,7 @@ function MaterialCard({
             </button>
             <button
               type="button"
-              onClick={() => onDelete(material.id)}
+              onClick={() => onDelete?.(material.id)}
               aria-label="Удалить материал"
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
             >
@@ -152,6 +151,24 @@ function MaterialCard({
       </div>
       )}
 
+      <TopicMaterialContent material={material} topicId={topicId} countView={countView} watchMark={watchMark} />
+    </div>
+  )
+}
+
+export function WorksheetMaterialCard({ material, topicId, countView }: { material: TopicMaterial; topicId: string; countView: boolean }) {
+  return <MaterialCard material={material} topicId={topicId} countView={countView} />
+}
+
+export function TopicMaterialContent({ material, topicId, countView, watchMark }: {
+  material: TopicMaterial
+  topicId: string
+  countView: boolean
+  watchMark?: VideoWatchMark
+}) {
+  const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
+  return (
+    <>
       {material.kind === 'text' && (isTheoryMarkdown(material.content)
         // Теория страницей: тот же исходник, что у PDF темы (theoryMarkdown.ts).
         ? <TheoryArticle source={material.content} />
@@ -195,7 +212,7 @@ function MaterialCard({
           countView={countView}
         />
       )}
-    </div>
+    </>
   )
 }
 

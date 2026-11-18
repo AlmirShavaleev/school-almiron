@@ -14,6 +14,8 @@ import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
 import { AttemptFeedback, type OpenPageTarget } from './AttemptFeedback'
 import { HomeworkTaskPhotos } from './HomeworkTaskPhotos'
 import { ReviewTaskList } from './ReviewTaskList'
+import { TopicMaterialContent, WorksheetMaterialCard } from './TopicMaterialItems'
+import type { TopicMaterial } from '@/lib/topicMaterialItems'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
 import { useAttemptNotes } from '@/hooks/useAttemptNotes'
 import { plural } from '@/lib/plural'
@@ -80,6 +82,10 @@ export function CameraInput({
 }
 
 
+function worksheetNumber(title: string | null): string | undefined {
+  return title?.trim().match(/^(?:(?:задание|задача)\s+)?(?:№\s*)?(\d+(?:\.\d+)?)(?=$|\s|[):—–-]|\.(?!\d))/i)?.[1]
+}
+
 /**
  * Ученический блок ДЗ темы.
  *
@@ -88,10 +94,11 @@ export function CameraInput({
  * «Сдать заново» после принятия — это UX, а запрет держит триггер в БД.
  */
 export function TopicHomeworkStudent({
-  topicId, className, solution, onOpenSolution, onSubmitted,
+  topicId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [],
 }: {
   topicId: string
   className?: string
+  worksheetMaterials?: readonly TopicMaterial[]
   /**
    * §239. Состояние «Решения ДЗ» темы (`useTopicSolutionState` страницы темы):
    * после «Принято» разбор ведёт к авторскому решению. Нет — строки нет.
@@ -112,6 +119,7 @@ export function TopicHomeworkStudent({
   const coarse = useCoarsePointer()
   const [busy, setBusy] = useState(false)
   const [confirmPartial, setConfirmPartial] = useState(false)
+  const [openPhotoNumber, setOpenPhotoNumber] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([])
   const uploadingFiles = uploads.length > 0
@@ -245,7 +253,7 @@ export function TopicHomeworkStudent({
     return () => document.removeEventListener('paste', onPaste)
   }, [draftAttemptId, draftHasPhotoTasks, uploadingFiles, uploadPicked])
 
-  if (loading) {
+  if (loading && (!openPhotoNumber || !homework)) {
     return (
       <div className={cn('flex items-center gap-2 py-6 text-sm text-gray-400', className)}>
         <Loader2 size={16} className="animate-spin" />
@@ -265,6 +273,27 @@ export function TopicHomeworkStudent({
   const photoMode = photoNumbers.length > 0
   const photoFiles = active ? draftFiles : accepted ? attemptFiles.filter(file => file.attempt_id === accepted.id) : []
   const missingPhotoCount = missingHomeworkPhotoNumbers(photoNumbers, photoFiles).length
+  const selectedNumber = openPhotoNumber && photoNumbers.includes(openPhotoNumber) ? openPhotoNumber : null
+  const remainingWorksheet = worksheetMaterials.filter(material => !photoNumbers.includes(worksheetNumber(material.title) ?? ''))
+  const selectedMaterials = selectedNumber ? worksheetMaterials.filter(material => worksheetNumber(material.title) === selectedNumber) : []
+  const modalWorksheet = selectedMaterials.length > 0 ? selectedMaterials : remainingWorksheet.filter(material => !worksheetNumber(material.title))
+  const photoFeedback = (
+    <>
+      {uploadingFiles && (
+        <p className="text-sm tabular-nums text-gray-600" role="status">
+          Загрузка фото… {Math.round(uploads.reduce((total, file) => total + file.percent, 0) / uploads.length)}%
+        </p>
+      )}
+      {photoMode && (localError || error) && (
+        <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{localError || error}</p>
+      )}
+      {rejected.length > 0 && (
+        <p className="text-sm text-amber-800" role="alert">
+          {Array.from(new Set(rejected.map(file => file.problem))).join(' ')}
+        </p>
+      )}
+    </>
+  )
 
   function submitPhotos(allowMissing: boolean) {
     setConfirmPartial(false)
@@ -555,8 +584,16 @@ export function TopicHomeworkStudent({
         </div>
       )}
 
-      {(error || localError) && (
+      {!photoMode && (error || localError) && (
         <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{localError || error}</div>
+      )}
+
+      {remainingWorksheet.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {remainingWorksheet.map(material => (
+            <WorksheetMaterialCard key={material.id} material={material} topicId={topicId} countView={!preview} />
+          ))}
+        </div>
       )}
 
       {/* ── Условие ── */}
@@ -593,21 +630,28 @@ export function TopicHomeworkStudent({
           <HomeworkTaskPhotos
             numbers={photoNumbers}
             files={photoFiles}
+            selected={selectedNumber}
+            condition={modalWorksheet.length > 0 ? modalWorksheet.map(material => (
+              <TopicMaterialContent key={material.id} material={material} topicId={topicId} countView={!preview} />
+            )) : taskFile ? (
+              <SignedFileLink bucket={TOPIC_HOMEWORK_BUCKET} url={taskFile.storage_path} className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary-700">
+                <FileText size={17} aria-hidden /> Открыть рабочий лист
+              </SignedFileLink>
+            ) : null}
+            feedback={photoFeedback}
             readOnly={!!accepted || (!!active && active.status !== 'draft')}
-            disabled={busy || uploadingFiles || preview}
+            disabled={busy || loading || uploadingFiles || preview}
+            onSelect={number => {
+              setOpenPhotoNumber(number)
+              if (number && !uploadingFiles) {
+                setRejected([])
+                setLocalError(null)
+              }
+            }}
             onPick={(number, picked) => uploadPicked(draftAttemptId, picked, { photoTaskNumber: number })}
             onDelete={file => run(() => removeAttemptFile(file.id, file.storage_path))}
           />
-          {uploadingFiles && (
-            <p className="text-sm text-gray-600" role="status">
-              Загрузка фото… {Math.round(uploads.reduce((total, file) => total + file.percent, 0) / uploads.length)}%
-            </p>
-          )}
-          {rejected.length > 0 && (
-            <p className="text-sm text-amber-800" role="alert">
-              {Array.from(new Set(rejected.map(file => file.problem))).join(' ')}
-            </p>
-          )}
+          {!selectedNumber && photoFeedback}
           {!accepted && (!active || active.status === 'draft') && (
             <Button
               data-testid="hw-submit-attempt"

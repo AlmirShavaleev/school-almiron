@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import type {
   TopicHomeworkAttemptRow,
@@ -680,6 +680,46 @@ describe('ДЗ ученику — файлы не того формата (§173
 })
 
 describe('Домашнее задание с фото по номерам', () => {
+  const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal')
+  const originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'close')
+
+  beforeAll(() => {
+    if (!originalShowModal) {
+      Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+        configurable: true, value(this: HTMLDialogElement) { this.open = true },
+      })
+    }
+    if (!originalClose) {
+      Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+        configurable: true, value(this: HTMLDialogElement) { this.open = false },
+      })
+    }
+  })
+  afterAll(() => {
+    if (!originalShowModal) Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal')
+    if (!originalClose) Reflect.deleteProperty(HTMLDialogElement.prototype, 'close')
+  })
+
+  it('показывает условие выбранного номера и оба способа приложить фото в его окне', () => {
+    homework = { ...hw(), photo_task_numbers: ['14.1', '14.2'] }
+    render(<TopicHomeworkStudent topicId={TOPIC} worksheetMaterials={[
+      { id: 'm1', kind: 'text', title: 'Задание №14.1', content: 'Условие первого номера', position: 0, isVisible: true, section: 'worksheet_homework' },
+      { id: 'm2', kind: 'text', title: 'Задание №14.2', content: 'Условие второго номера', position: 1, isVisible: true, section: 'worksheet_homework' },
+      { id: 'm3', kind: 'text', title: '№14.3', content: 'Остальное условие', position: 2, isVisible: true, section: 'worksheet_homework' },
+    ]} />)
+
+    expect(screen.queryByText('Условие первого номера')).not.toBeInTheDocument()
+    expect(screen.getByText('Остальное условие')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №14.1' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Задание №14.1' }))
+    expect(dialog.getByText('Условие первого номера')).toBeInTheDocument()
+    expect(dialog.queryByText('Условие второго номера')).not.toBeInTheDocument()
+    expect(dialog.getByLabelText('Загрузить фото решения для задания №14.1')).toHaveAttribute('multiple')
+    expect(dialog.getByLabelText('Снять фото для задания №14.1')).toHaveAttribute('capture', 'environment')
+    fireEvent.click(dialog.getByRole('button', { name: 'Закрыть задание' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('сохраняет первое фото в новом черновике и ждёт явной сдачи', async () => {
     homework = { ...hw(), photo_task_numbers: ['2', '4'] }
     const onSubmitted = vi.fn()
@@ -687,6 +727,7 @@ describe('Домашнее задание с фото по номерам', () =
     const submit = screen.getByRole('button', { name: 'Сдать работу' })
     expect(submit).toBeEnabled()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №2' }))
     const photo = new File(['solution'], 'solution.jpg', { type: 'image/jpeg' })
     fireEvent.change(screen.getByLabelText('Загрузить фото решения для задания №2'), {
       target: { files: [photo] },
@@ -705,6 +746,8 @@ describe('Домашнее задание с фото по номерам', () =
     }]
     rerender(<TopicHomeworkStudent topicId={TOPIC} onSubmitted={onSubmitted} />)
     expect(screen.getByText('1 из 2 номеров')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Задание №2' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть задание' }))
     fireEvent.click(submit)
     expect(screen.getByRole('dialog')).toHaveTextContent('Без решения: 1 задание из 2.')
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить решать' }))
@@ -720,6 +763,8 @@ describe('Домашнее задание с фото по номерам', () =
     attempts = [{ ...attempts[0], status: 'submitted' }]
     rerender(<TopicHomeworkStudent topicId={TOPIC} />)
     expect(screen.getByText('Работа сдана')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №2, фото приложено' }))
+    expect(screen.getByRole('dialog', { name: 'Задание №2' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Загрузить фото решения для задания №2')).not.toBeInTheDocument()
   })
 
@@ -734,12 +779,14 @@ describe('Домашнее задание с фото по номерам', () =
 
     attempts = [{ ...attempt(1, 'submitted'), photo_task_numbers: ['2', '4'] }]
     rerender(<TopicHomeworkStudent topicId={TOPIC} />)
-    expect(screen.getAllByText('Решение не приложено')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №2' }))
+    expect(screen.getByText('Решение не приложено')).toBeInTheDocument()
   })
 
   it('не создаёт черновик при попытке приложить PDF к заданию с фото', () => {
     homework = { ...hw(), photo_task_numbers: ['2'] }
     renderStudent()
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №2' }))
     const pdf = new File(['solution'], 'solution.pdf', { type: 'application/pdf' })
     fireEvent.change(screen.getByLabelText('Загрузить фото решения для задания №2'), {
       target: { files: [pdf] },
