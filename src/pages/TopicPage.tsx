@@ -183,6 +183,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
 
   // Состояние моей работы — словами, для ряда «Домашнее задание».
   const homeworkState = useMyTopicHomeworkState(topicId ?? null)
+  const hasPhotoSubmission = homeworkState.hasPhotoSubmission
 
   // §224.2. Пробники группы — для баннера «Идёт пробник» сверху. Скриншот
   // жалобы владельца 26.09 был именно отсюда: ученик дошёл до темы, а про
@@ -495,7 +496,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
    *    не «прочитал». Автоматический учёт просмотров (§107) живёт отдельно.
    */
   function renderGroupMark(groupKey: TopicGroupKey) {
-    if (groupKey === 'homework' && isTraining && autocheck.state) {
+    if (groupKey === 'homework' && isTraining && !hasPhotoSubmission && autocheck.state) {
       const st = autocheck.state
       return (
         <span
@@ -672,7 +673,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           // материалы (условие, решение, критерии): перечитываем вкладки.
           onPhaseChange={() => { reloadMaterials?.() }}
         />
-      ) : key === 'homework' && isTraining ? (
+      ) : key === 'homework' && isTraining && !hasPhotoSubmission ? (
         autocheck.state ? (
           <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
         ) : (
@@ -681,16 +682,20 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           </div>
         )
       ) : key === 'homework' ? (
-        <TopicHomeworkStudent
-          topicId={topic.id}
-          // §239. После «Принято» разбор ведёт к авторскому решению: это та
-          // же вкладка «Решение ДЗ», её открывает база (`topic_solution_unlocked`).
-          solution={{ unlocked: solutionState.unlocked, hasSolution: solutionState.hasSolution }}
-          onOpenSolution={() => {
-            setChosen('solution')
-            window.requestAnimationFrame(() => tabsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }))
-          }}
-        />
+        <div className="space-y-4">
+          {isTraining && autocheck.state && autocheckTotal > 0 && (
+            <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
+          )}
+          <TopicHomeworkStudent
+            topicId={topic.id}
+            // §239. После «Принято» разбор ведёт к вкладке «Решение ДЗ».
+            solution={{ unlocked: solutionState.unlocked, hasSolution: solutionState.hasSolution }}
+            onOpenSolution={() => {
+              setChosen('solution')
+              window.requestAnimationFrame(() => tabsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }))
+            }}
+          />
+        </div>
       ) : key === 'test' ? (
         /* Задачи к уроку (§162) и тест из банка — разные системы. Если есть
            оба, показываем оба с подписями, а не выбираем один молча. */

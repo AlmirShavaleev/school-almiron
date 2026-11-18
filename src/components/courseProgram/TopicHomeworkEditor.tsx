@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Trash2, Upload } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 import { usePasteFiles } from '@/hooks/usePasteFiles'
 import { nextScreenshotIndex } from '@/lib/clipboardFiles'
 import { TopicHomeworkNotify } from '@/components/courseProgram/TopicHomeworkNotify'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { SignedImage } from '@/components/ui/SignedImage'
-import { TOPIC_HOMEWORK_BUCKET, defaultGradeScale, formatBytes, type GradeScale } from '@/lib/topicHomework'
+import { TOPIC_HOMEWORK_BUCKET, defaultGradeScale, formatBytes, parseHomeworkPhotoNumbers, type GradeScale } from '@/lib/topicHomework'
 import { cn } from '@/utils/cn'
 import { toast } from '@/store/toastStore'
 import { useTimedSummary } from '@/hooks/useTimedWork'
@@ -78,6 +79,10 @@ export function TopicHomeworkEditor({
   } = useTopicHomework(topicId)
 
   const [dueAt, setDueAt] = useState('')
+  const [photoNumbers, setPhotoNumbers] = useState('')
+  useEffect(() => {
+    setPhotoNumbers(homework?.photo_task_numbers?.join(', ') ?? '')
+  }, [homework?.photo_task_numbers])
   // §265. Шкала есть всегда: у урока по умолчанию 100-балльная, у проверочной и
   // контрольной — только 5-балльная (выбора нет). Пустой шкалы («без баллов»)
   // больше не бывает — старое ДЗ без шкалы показываем шкалой по типу темы, её
@@ -505,6 +510,39 @@ export function TopicHomeworkEditor({
         )}
 
         {/* 3. Дедлайн и баллы — сохраняются сразу */}
+        {!timed && homework?.photo_task_numbers && !homework.autocheck && (
+          <div className="mt-4 rounded-xl border border-gray-200 p-3">
+            <label htmlFor={`hw-photo-numbers-${topicId}`} className="block text-sm font-semibold text-gray-900">
+              Номера с загрузкой фото решения
+            </label>
+            <p className="mt-1 text-xs text-gray-600">
+              Укажите номера из рабочего листа через запятую. Для этих номеров ученик увидит кнопку загрузки фото.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                id={`hw-photo-numbers-${topicId}`}
+                value={photoNumbers}
+                onChange={event => setPhotoNumbers(event.target.value)}
+                placeholder="Например, 1, 3, 5"
+                className="min-h-10 flex-1 rounded-lg border border-gray-300 px-3 text-sm"
+                disabled={busy}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy || photoNumbers === (homework.photo_task_numbers?.join(', ') ?? '')}
+                onClick={() => void run(async () => {
+                  const numbers = parseHomeworkPhotoNumbers(photoNumbers)
+                  await updateHomework({ photo_task_numbers: numbers })
+                  setPhotoNumbers(numbers.join(', '))
+                })}
+              >
+                Сохранить номера
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className={cn('mt-4 grid gap-2', !timed && 'sm:grid-cols-2')}>
           {!timed && (
           <div>

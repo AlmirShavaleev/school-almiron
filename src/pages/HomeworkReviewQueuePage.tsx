@@ -39,7 +39,7 @@ import {
 import { viewersLabel, viewersOfAttempt, type PresenceMeta } from '@/lib/reviewPresence'
 import {
   ATTEMPT_STATUS_TONE, TEACHER_ATTEMPT_STATUS_LABEL, gradeScaleMax, latestReview,
-  type TopicHomeworkAttemptFileRow, type TopicHomeworkAttemptRow, type TopicHomeworkReviewRow,
+  missingHomeworkPhotoNumbers, type TopicHomeworkAttemptFileRow, type TopicHomeworkAttemptRow, type TopicHomeworkReviewRow,
 } from '@/lib/topicHomework'
 import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
 import {
@@ -481,6 +481,9 @@ export function HomeworkReviewQueuePage() {
    */
   const [reviewing, setReviewing] = useState<{ row: QueueRow; locked: boolean } | null>(null)
   const filesOf = (attemptId: string) => attemptFiles.filter(f => f.attempt_id === attemptId)
+  const missingPhotoNumbers = reviewing?.row.attempt.photo_task_numbers
+    ? missingHomeworkPhotoNumbers(reviewing.row.attempt.photo_task_numbers, filesOf(reviewing.row.attempt.id))
+    : []
 
   /**
    * Открыть конкретную работу по ссылке `/homework-queue?attempt=<id>` — из
@@ -1147,7 +1150,7 @@ export function HomeworkReviewQueuePage() {
           // §248. «Имя · ДЗ» одной строкой шапки, мелко — группа и срок.
           lead={`${studentNames[reviewing.row.attempt.student_id] ?? 'Ученик'} · ${reviewing.row.homeworkTitle}`}
           leadTitle={reviewing.row.topicTitle !== reviewing.row.homeworkTitle ? reviewing.row.topicTitle : undefined}
-          subtitle={reviewHeaderLine(reviewing.row)}
+          subtitle={[reviewHeaderLine(reviewing.row), missingPhotoNumbers.length ? `Без решения — № ${missingPhotoNumbers.join(', ')}` : null].filter(Boolean).join(' · ')}
           backLabel={position ? `Очередь · ${position.index} из ${position.total}` : 'Очередь'}
           headerAside={nextRow ? (
             <NextWorkButton onNext={() => openRow(nextRow, viewersOf(nextRow.attempt.id).length > 0)} />

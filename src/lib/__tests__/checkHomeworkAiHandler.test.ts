@@ -105,6 +105,29 @@ describe('боевой путь (без benchmark)', () => {
     expect(call.body).toMatchObject({ model: 'google/gemini-3.8-flash', response_format: { type: 'json_object' }, max_tokens: 16000 })
   })
 
+  it('привязывает фото к номеру и показывает пропущенное решение при неполной сдаче', async () => {
+    const attempt = state.tables.topic_homework_attempts as Record<string, unknown>
+    Object.assign(attempt, { status: 'submitted', photo_task_numbers: ['2', '4'] })
+    const [file] = state.tables.topic_homework_attempt_files as Record<string, unknown>[]
+    state.tables.topic_homework_attempt_files = [{ ...file, photo_task_number: '2' }]
+    const model = modelAnswer() as { choices: { message: { content: string } }[] }
+    const answer = JSON.parse(model.choices[0].message.content)
+    answer.tasks = [answer.tasks[1]]
+    answer.findings = [answer.findings[0]]
+    model.choices[0].message.content = JSON.stringify(answer)
+    state.model = { status: 200, body: model }
+
+    const res = await handler(post({ attempt_id: ATTEMPT_ID }))
+    expect(await res.json()).toEqual({ job_id: 'job-1', findings: 1 })
+    expect(JSON.stringify(state.fetches[0].body)).toContain('Задание №2')
+    expect(touched('topic_homework_ai_jobs')[1].ops[0][1]).toMatchObject({
+      tasks: [
+        expect.objectContaining({ no: '2', verdict: 'wrong' }),
+        expect.objectContaining({ no: '4', verdict: 'unchecked', note: 'Решение не приложено' }),
+      ],
+    })
+  })
+
   it('AI_MODEL проекта идёт в бой как есть', async () => {
     state.env.AI_MODEL = 'some/other-model'
     await handler(post({ attempt_id: ATTEMPT_ID }))

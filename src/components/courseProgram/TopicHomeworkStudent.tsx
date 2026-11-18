@@ -8,9 +8,11 @@ import { useCoarsePointer } from '@/hooks/useCoarsePointer'
 import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
 import { AttemptFeedback, type OpenPageTarget } from './AttemptFeedback'
+import { HomeworkTaskPhotos } from './HomeworkTaskPhotos'
 import { ReviewTaskList } from './ReviewTaskList'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
 import { useAttemptNotes } from '@/hooks/useAttemptNotes'
@@ -31,6 +33,8 @@ import {
   formatBytes,
   formatDue,
   gradeScaleMax,
+  homeworkPhotoMime,
+  missingHomeworkPhotoNumbers,
   isOverdue,
   latestReview,
   moveItem,
@@ -101,14 +105,16 @@ export function TopicHomeworkStudent({
   const preview = usePreviewMode()
   const {
     homework, files, attempts, attemptFiles, reviews, loading, error,
-    startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt,
+    startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt, reload,
   } = useTopicHomework(topicId, { preview })
 
   const coarse = useCoarsePointer()
   const [busy, setBusy] = useState(false)
+  const [confirmPartial, setConfirmPartial] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([])
   const uploadingFiles = uploads.length > 0
+  const photosUploading = useRef(false)
   /**
    * Файлы, которые платформа не покажет преподавателю (DNG и прочее, §173).
    * Отдельно от `localError`: это не сбой, а объяснение с действием —
@@ -183,37 +189,49 @@ export function TopicHomeworkStudent({
   }
 
   const uploadPicked = useCallback(
-    async (attemptId: string, incoming: File[], { fromPaste = false } = {}) => {
-      if (incoming.length === 0) return
+    async (attemptId: string | null, incoming: File[], { fromPaste = false, photoTaskNumber }: { fromPaste?: boolean; photoTaskNumber?: string } = {}) => {
+      if (incoming.length === 0 || photosUploading.current) return
       // Гейт по формату — ДО сжатия и до Storage. Отклонённый файл не
       // «выбран»: он не попадает ни в прогресс, ни в uploadAttemptFiles;
       // остальные из той же пачки идут как обычно.
       const { accepted, rejected: bad } = splitHomeworkFiles(incoming)
-      const picked = fromPaste ? accepted.map(namePastedFile) : accepted
+      const selected = photoTaskNumber ? accepted.filter(file => homeworkPhotoMime(file)) : accepted
+      for (const file of accepted) {
+        if (!selected.includes(file)) bad.push({ file, problem: 'Для этого номера загрузите фото решения.' })
+      }
+      const picked = fromPaste ? selected.map(namePastedFile) : selected
 
       setRejected(bad)
       setLocalError(null)
       if (picked.length === 0) return
 
+      photosUploading.current = true
       setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
       try {
-        await uploadAttemptFiles(attemptId, picked, (index, percent) => {
+        const id = attemptId ?? await startAttempt(false)
+        if (!id) return
+        const onProgress = (index: number, percent: number) => {
           setUploads(prev => prev.map((u, i) => (i === index ? { ...u, percent } : u)))
-        })
+        }
+        if (photoTaskNumber) await uploadAttemptFiles(id, picked, onProgress, photoTaskNumber)
+        else await uploadAttemptFiles(id, picked, onProgress)
       } catch (err: any) {
         setLocalError(err?.message ?? 'Не удалось загрузить файлы')
       } finally {
+        photosUploading.current = false
         setUploads([])
+        if (!attemptId) reload()
       }
     },
-    [uploadAttemptFiles],
+    [reload, startAttempt, uploadAttemptFiles],
   )
 
   const draftAttempt = attempts.find(a => a.status === 'draft') ?? null
   const draftAttemptId = draftAttempt?.id ?? null
+  const draftHasPhotoTasks = !!draftAttempt?.photo_task_numbers?.length
 
   useEffect(() => {
-    if (!draftAttemptId || uploadingFiles) return
+    if (!draftAttemptId || uploadingFiles || draftHasPhotoTasks) return
     function onPaste(e: ClipboardEvent) {
       const target = e.target as HTMLElement | null
       if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return
@@ -224,7 +242,7 @@ export function TopicHomeworkStudent({
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
-  }, [draftAttemptId, uploadingFiles, uploadPicked])
+  }, [draftAttemptId, draftHasPhotoTasks, uploadingFiles, uploadPicked])
 
   if (loading) {
     return (
@@ -241,6 +259,24 @@ export function TopicHomeworkStudent({
   const accepted = acceptedAttempt(attempts)
   const taskFile = files[0] ?? null
   const draftFiles = active ? attemptFiles.filter(f => f.attempt_id === active.id) : []
+  const photoNumbers = (active ?? accepted)?.photo_task_numbers ?? (active || accepted ? [] : homework.photo_task_numbers ?? [])
+  const photoMode = photoNumbers.length > 0
+  const photoFiles = active ? draftFiles : accepted ? attemptFiles.filter(file => file.attempt_id === accepted.id) : []
+  const missingPhotoCount = missingHomeworkPhotoNumbers(photoNumbers, photoFiles).length
+
+  function submitPhotos(allowMissing: boolean) {
+    setConfirmPartial(false)
+    void run(async () => {
+      const id = draftAttemptId ?? await startAttempt(false)
+      if (!id) return
+      try {
+        await submitAttempt(id, allowMissing)
+      } catch (error) {
+        if (!draftAttemptId) reload()
+        throw error
+      }
+    })
+  }
 
   const gradeMax = gradeScaleMax(homework.grade_scale)
 
@@ -540,8 +576,54 @@ export function TopicHomeworkStudent({
         </div>
       )}
 
+      {photoMode && (
+        <div className="mt-4 space-y-3">
+          <ConfirmDialog
+            open={confirmPartial}
+            title="Отправить работу на проверку?"
+            text={`Без решения: ${missingPhotoCount} ${plural(missingPhotoCount, 'задание', 'задания', 'заданий')} из ${photoNumbers.length}.`}
+            cancelLabel="Продолжить решать"
+            confirmLabel="Всё равно сдать"
+            onCancel={() => setConfirmPartial(false)}
+            onConfirm={() => submitPhotos(true)}
+          />
+          <HomeworkTaskPhotos
+            numbers={photoNumbers}
+            files={photoFiles}
+            readOnly={!!accepted || (!!active && active.status !== 'draft')}
+            disabled={busy || uploadingFiles || preview}
+            onPick={(number, picked) => uploadPicked(draftAttemptId, picked, { photoTaskNumber: number })}
+            onDelete={file => run(() => removeAttemptFile(file.id, file.storage_path))}
+          />
+          {uploadingFiles && (
+            <p className="text-sm text-gray-600" role="status">
+              Загрузка фото… {Math.round(uploads.reduce((total, file) => total + file.percent, 0) / uploads.length)}%
+            </p>
+          )}
+          {rejected.length > 0 && (
+            <p className="text-sm text-amber-800" role="alert">
+              {Array.from(new Set(rejected.map(file => file.problem))).join(' ')}
+            </p>
+          )}
+          {!accepted && (!active || active.status === 'draft') && (
+            <Button
+              data-testid="hw-submit-attempt"
+              className="w-full"
+              onClick={() => {
+                if (missingPhotoCount) setConfirmPartial(true)
+                else submitPhotos(false)
+              }}
+              loading={busy}
+              disabled={uploadingFiles || preview}
+            >
+              Сдать работу
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* ── Сборка сдачи (только если есть черновик) ── */}
-      {active && active.status === 'draft' && (
+      {!photoMode && active && active.status === 'draft' && (
         <div className="mt-4">
           {/* Заголовок с числом страниц */}
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
@@ -823,7 +905,7 @@ export function TopicHomeworkStudent({
           review={latestReview(reviews, featured.id)}
           files={attemptFiles.filter(f => f.attempt_id === featured.id)}
           rows={reviewTasks.filter(t => t.attempt_id === featured.id)}
-          resubmit={featured.status === 'returned_for_revision' && canResubmit ? {
+          resubmit={featured.status === 'returned_for_revision' && canResubmit && !photoMode ? {
             onClick: () => { void run(() => startAttempt()) },
             busy,
             disabled: preview,
@@ -839,7 +921,7 @@ export function TopicHomeworkStudent({
       )}
 
       {/* ── Начать сдачу ── */}
-      {!active && !accepted && !(featured && canResubmit) && (
+      {!photoMode && !active && !accepted && !(featured && canResubmit) && (
         <div className="mt-4">
           <Button
             data-testid="hw-start-attempt"

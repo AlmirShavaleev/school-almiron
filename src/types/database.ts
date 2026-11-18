@@ -4590,6 +4590,7 @@ export type Database = {
           id: string
           instructions: string | null
           is_published: boolean
+          photo_task_numbers: string[]
           title: string
           topic_id: string
           updated_at: string
@@ -4602,6 +4603,7 @@ export type Database = {
           id?: string
           instructions?: string | null
           is_published?: boolean
+          photo_task_numbers?: string[]
           title: string
           topic_id: string
           updated_at?: string
@@ -4614,6 +4616,7 @@ export type Database = {
           id?: string
           instructions?: string | null
           is_published?: boolean
+          photo_task_numbers?: string[]
           title?: string
           topic_id?: string
           updated_at?: string
@@ -4809,6 +4812,7 @@ export type Database = {
           metadata: Json
           mime_type: string | null
           page_number: number | null
+          photo_task_number: string | null
           position: number
           rotation: number | null
           sha256: string | null
@@ -4825,6 +4829,7 @@ export type Database = {
           metadata?: Json
           mime_type?: string | null
           page_number?: number | null
+          photo_task_number?: string | null
           position?: number
           rotation?: number | null
           sha256?: string | null
@@ -4841,6 +4846,7 @@ export type Database = {
           metadata?: Json
           mime_type?: string | null
           page_number?: number | null
+          photo_task_number?: string | null
           position?: number
           rotation?: number | null
           sha256?: string | null
@@ -4864,6 +4870,7 @@ export type Database = {
           created_at: string
           homework_id: string
           id: string
+          photo_task_numbers: string[]
           status: Database["public"]["Enums"]["topic_homework_attempt_status"]
           student_id: string
           submitted_at: string | null
@@ -4874,6 +4881,7 @@ export type Database = {
           created_at?: string
           homework_id: string
           id?: string
+          photo_task_numbers?: string[]
           status?: Database["public"]["Enums"]["topic_homework_attempt_status"]
           student_id: string
           submitted_at?: string | null
@@ -4884,6 +4892,7 @@ export type Database = {
           created_at?: string
           homework_id?: string
           id?: string
+          photo_task_numbers?: string[]
           status?: Database["public"]["Enums"]["topic_homework_attempt_status"]
           student_id?: string
           submitted_at?: string | null
@@ -7158,6 +7167,10 @@ export type Database = {
         Returns: boolean
       }
       topic_homework_submit_attempt: {
+        Args: { p_attempt_id: string }
+        Returns: undefined
+      }
+      topic_homework_submit_incomplete_photos: {
         Args: { p_attempt_id: string }
         Returns: undefined
       }

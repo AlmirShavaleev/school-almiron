@@ -48,6 +48,33 @@ export const HOMEWORK_FILE_ACCEPT = [
   ...Object.values(HOMEWORK_FILE_TYPES).flatMap(exts => exts.map(e => `.${e}`)),
 ].join(',')
 
+const HOMEWORK_PHOTO_MIMES = Object.keys(HOMEWORK_FILE_TYPES).filter(type => type.startsWith('image/'))
+export const HOMEWORK_PHOTO_ACCEPT = HOMEWORK_PHOTO_MIMES.flatMap(type => [
+  type, ...HOMEWORK_FILE_TYPES[type].map(ext => '.' + ext),
+]).join(',')
+
+export function homeworkPhotoMime(file: { name: string; type: string }): string | undefined {
+  const type = file.type.toLowerCase()
+  if (type && type !== 'application/octet-stream') {
+    return HOMEWORK_PHOTO_MIMES.includes(type) ? type : undefined
+  }
+  return HOMEWORK_PHOTO_MIMES.find(mime => HOMEWORK_FILE_TYPES[mime].includes(fileExtension(file.name)))
+}
+
+export function missingHomeworkPhotoNumbers(numbers: readonly string[], files: readonly TopicHomeworkAttemptFileRow[]) {
+  const attached = new Set(files.map(file => file.photo_task_number))
+  return numbers.filter(number => !attached.has(number))
+}
+
+export function parseHomeworkPhotoNumbers(value: string): string[] {
+  const numbers = value.trim().split(/[\s,]+/).filter(Boolean)
+  if (numbers.length > 30 || numbers.some(number => !/^[1-9][0-9]{0,5}(\.[1-9][0-9]{0,5})?$/.test(number))) {
+    throw new Error('Укажите до 30 номеров через запятую, например 1, 3, 5 или 13.2.')
+  }
+  if (new Set(numbers).size !== numbers.length) throw new Error('Уберите повторяющиеся номера.')
+  return numbers
+}
+
 export type TopicHomeworkAttemptStatus =
   | 'draft'
   | 'submitted'
@@ -85,6 +112,8 @@ export interface TopicHomeworkRow {
   topic_id: string
   title: string
   instructions: string | null
+  photo_task_numbers?: string[]
+  autocheck?: boolean
   is_published: boolean
   due_at: string | null
   grade_scale: 'five' | 'hundred' | null
@@ -120,6 +149,7 @@ export interface TopicHomeworkAttemptRow {
   submitted_at: string | null
   /** §240. Сдано автоматически в момент закрытия окна. */
   auto_submitted?: boolean
+  photo_task_numbers?: string[]
   created_at: string
   updated_at: string
 }
@@ -129,6 +159,7 @@ export interface TopicHomeworkAttemptFileRow {
   attempt_id: string
   storage_path: string
   file_name: string
+  photo_task_number?: string | null
   mime_type: string | null
   size_bytes: number | null
   position: number

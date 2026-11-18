@@ -29,9 +29,11 @@ export function useMyTopicHomeworkState(topicId: string | null) {
   const preview = usePreviewMode()
   const { studentId, loading: resolvingStudent } = useMyStudentId(!preview)
   const [state, setState] = useState<TopicHomeworkState>('none')
+  const [hasPhotoSubmission, setHasPhotoSubmission] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    setHasPhotoSubmission(false)
     if (resolvingStudent && !preview) return
     if (!topicId || (!studentId && !preview)) { setState('none'); setLoading(false); return }
 
@@ -41,16 +43,17 @@ export function useMyTopicHomeworkState(topicId: string | null) {
     async function load(sid: string | null) {
       const { data: homework } = await supabase
         .from('topic_homework')
-        .select('id')
+        .select('*')
         .eq('topic_id', topicId!)
         .maybeSingle()
 
       if (cancelled) return
-      if (!homework?.id) { setState('none'); setLoading(false); return }
+      if (!homework?.id || (preview && !homework.is_published)) { setState('none'); setLoading(false); return }
+      const requiresPhotos = !!homework.photo_task_numbers?.length
 
       // Предпросмотр (§178): попытки не читаем — под RLS персонала пришли бы
       // чужие. ДЗ есть, своей работы нет: «Не сдано», как у нового ученика.
-      if (sid === null) { setState('not_submitted'); setLoading(false); return }
+      if (sid === null) { setHasPhotoSubmission(requiresPhotos); setState('not_submitted'); setLoading(false); return }
 
       const { data: attempts } = await supabase
         .from('topic_homework_attempts')
@@ -60,6 +63,7 @@ export function useMyTopicHomeworkState(topicId: string | null) {
 
       if (cancelled) return
       const latest = attemptsNewestFirst((attempts ?? []) as TopicHomeworkAttemptRow[])[0]
+      setHasPhotoSubmission(requiresPhotos || !!latest?.photo_task_numbers?.length)
 
       setState(
         !latest || latest.status === 'draft' ? 'not_submitted'
@@ -74,5 +78,5 @@ export function useMyTopicHomeworkState(topicId: string | null) {
     return () => { cancelled = true }
   }, [topicId, studentId, resolvingStudent, preview])
 
-  return { state, loading: preview ? loading : loading || resolvingStudent }
+  return { state, hasPhotoSubmission, loading: preview ? loading : loading || resolvingStudent }
 }

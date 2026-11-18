@@ -622,7 +622,7 @@ export function AttemptAnnotationOverlay({
                 )}
               >
                 <FileChip
-                  name={f.file_name}
+                  name={f.photo_task_number ? `№ ${f.photo_task_number} · ${f.file_name}` : f.file_name}
                   leading={<Paperclip size={11} className="shrink-0" />}
                   trailing={isOther && <span className="shrink-0 text-[10px] text-amber-700">без разметки</span>}
                 />
