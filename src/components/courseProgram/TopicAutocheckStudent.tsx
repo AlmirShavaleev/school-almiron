@@ -70,7 +70,9 @@ export function TopicAutocheckStudent({
       )}
 
       <p className="text-[13px] leading-snug text-graphite-500">
-        На каждую задачу {AUTOCHECK_MAX_ATTEMPTS} попытки. После верного ответа или третьей ошибки открывается решение.
+        На каждую задачу {AUTOCHECK_MAX_ATTEMPTS} попытки. {state.solutionsAfterFinish
+          ? 'Решения и верные ответы откроются после завершения всех задач ДЗ: верного ответа или трёх попыток на каждую.'
+          : 'После верного ответа или третьей ошибки открывается решение.'}
         Оценка — доля решённых задач по 100-балльной шкале; она попадёт в журнал, когда закрыты все задачи.
       </p>
     </section>
@@ -393,3 +395,4 @@ function ZoomableImage({ path, alt, sensitive = false, hint = true, className }:
     </div>
   )
 }
+

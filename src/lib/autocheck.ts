@@ -112,6 +112,8 @@ export interface AutocheckState {
   closed: number
   finished: boolean
   grade: number | null
+  /** Решения доступны после закрытия всего ДЗ; старые уроки — после задачи. */
+  solutionsAfterFinish?: boolean
 }
 
 function num(v: unknown): number | null {
@@ -161,6 +163,7 @@ export function parseAutocheckState(raw: unknown): AutocheckState | null {
     closed: num(r.closed) ?? 0,
     finished: r.finished === true,
     grade: num(r.grade),
+    solutionsAfterFinish: r.solutions_after_finish === true,
   }
 }
 
@@ -292,3 +295,4 @@ export function sortResults(students: AutocheckResultStudent[], by: ResultsSort)
     return ga - gb || a.name.localeCompare(b.name, 'ru')
   })
 }
+
