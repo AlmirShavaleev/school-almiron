@@ -1,12 +1,12 @@
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import { dirname, join, sep } from 'node:path'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { renderDensityFor } from '../../supabase/functions/check-homework-ai/findings.ts'
 
 export * from '../../supabase/functions/check-homework-ai/pdf.ts'
 
 const pdfjsDirectory = dirname(fileURLToPath(import.meta.resolve('pdfjs-dist/package.json')))
-const pdfjsDataPath = folder => join(pdfjsDirectory, folder) + sep
+const pdfjsDataPath = folder => pdfjsDirectory.replaceAll('\\', '/') + '/' + folder + '/'
 
 // The Node-only preview uses the same PDF.js package as the browser viewer.
 export async function renderPdfPages(bytes, limit, budgetMs, jpegQuality = 80) {
