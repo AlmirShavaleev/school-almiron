@@ -8,10 +8,14 @@ import { useCoarsePointer } from '@/hooks/useCoarsePointer'
 import { PREVIEW_NOOP_MESSAGE, usePreviewMode } from '@/store/staffModeStore'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { AttemptAnnotationOverlay } from './AttemptAnnotationOverlay'
 import { AttemptFeedback, type OpenPageTarget } from './AttemptFeedback'
+import { HomeworkTaskPhotos } from './HomeworkTaskPhotos'
 import { ReviewTaskList } from './ReviewTaskList'
+import { TopicMaterialContent, WorksheetMaterialCard } from './TopicMaterialItems'
+import type { TopicMaterial } from '@/lib/topicMaterialItems'
 import { useReviewTasksOfAttempts } from '@/hooks/useHomeworkReviewTasks'
 import { useAttemptNotes } from '@/hooks/useAttemptNotes'
 import { plural } from '@/lib/plural'
@@ -31,6 +35,7 @@ import {
   formatBytes,
   formatDue,
   gradeScaleMax,
+  missingHomeworkPhotoNumbers,
   isOverdue,
   latestReview,
   moveItem,
@@ -76,6 +81,10 @@ export function CameraInput({
 }
 
 
+function worksheetNumber(title: string | null): string | undefined {
+  return title?.trim().match(/^(?:(?:задание|задача)\s+)?(?:№\s*)?(\d+(?:\.\d+)?)(?=$|\s|[):—–-]|\.(?!\d))/i)?.[1]
+}
+
 /**
  * Ученический блок ДЗ темы.
  *
@@ -84,10 +93,11 @@ export function CameraInput({
  * «Сдать заново» после принятия — это UX, а запрет держит триггер в БД.
  */
 export function TopicHomeworkStudent({
-  topicId, className, solution, onOpenSolution,
+  topicId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [],
 }: {
   topicId: string
   className?: string
+  worksheetMaterials?: readonly TopicMaterial[]
   /**
    * §239. Состояние «Решения ДЗ» темы (`useTopicSolutionState` страницы темы):
    * после «Принято» разбор ведёт к авторскому решению. Нет — строки нет.
@@ -95,20 +105,24 @@ export function TopicHomeworkStudent({
   solution?: { unlocked: boolean; hasSolution: boolean } | null
   /** §239. Переключить страницу темы на раздел «Решение ДЗ». */
   onOpenSolution?: () => void
+  onSubmitted?: () => void
 }) {
   // Предпросмотр глазами ученика (§178): блок в состоянии «не сдано», кнопка
   // сдачи видна, но выключена; хук в этой ветке попыток не читает и не пишет.
   const preview = usePreviewMode()
   const {
     homework, files, attempts, attemptFiles, reviews, loading, error,
-    startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt,
+    startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt, reload,
   } = useTopicHomework(topicId, { preview })
 
   const coarse = useCoarsePointer()
   const [busy, setBusy] = useState(false)
+  const [confirmPartial, setConfirmPartial] = useState(false)
+  const [activePhotoNumber, setActivePhotoNumber] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
   const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([])
   const uploadingFiles = uploads.length > 0
+  const photosUploading = useRef(false)
   /**
    * Файлы, которые платформа не покажет преподавателю (DNG и прочее, §173).
    * Отдельно от `localError`: это не сбой, а объяснение с действием —
@@ -183,8 +197,8 @@ export function TopicHomeworkStudent({
   }
 
   const uploadPicked = useCallback(
-    async (attemptId: string, incoming: File[], { fromPaste = false } = {}) => {
-      if (incoming.length === 0) return
+    async (attemptId: string | null, incoming: File[], { fromPaste = false, photoTaskNumber }: { fromPaste?: boolean; photoTaskNumber?: string } = {}) => {
+      if (incoming.length === 0 || photosUploading.current) return
       // Гейт по формату — ДО сжатия и до Storage. Отклонённый файл не
       // «выбран»: он не попадает ни в прогресс, ни в uploadAttemptFiles;
       // остальные из той же пачки идут как обычно.
@@ -195,25 +209,33 @@ export function TopicHomeworkStudent({
       setLocalError(null)
       if (picked.length === 0) return
 
+      photosUploading.current = true
       setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
       try {
-        await uploadAttemptFiles(attemptId, picked, (index, percent) => {
+        const id = attemptId ?? await startAttempt(false)
+        if (!id) return
+        const onProgress = (index: number, percent: number) => {
           setUploads(prev => prev.map((u, i) => (i === index ? { ...u, percent } : u)))
-        })
+        }
+        if (photoTaskNumber) await uploadAttemptFiles(id, picked, onProgress, photoTaskNumber)
+        else await uploadAttemptFiles(id, picked, onProgress)
       } catch (err: any) {
         setLocalError(err?.message ?? 'Не удалось загрузить файлы')
       } finally {
+        photosUploading.current = false
         setUploads([])
+        if (!attemptId) reload()
       }
     },
-    [uploadAttemptFiles],
+    [reload, startAttempt, uploadAttemptFiles],
   )
 
   const draftAttempt = attempts.find(a => a.status === 'draft') ?? null
   const draftAttemptId = draftAttempt?.id ?? null
+  const draftHasPhotoTasks = !!draftAttempt?.photo_task_numbers?.length
 
   useEffect(() => {
-    if (!draftAttemptId || uploadingFiles) return
+    if (!draftAttemptId || uploadingFiles || draftHasPhotoTasks) return
     function onPaste(e: ClipboardEvent) {
       const target = e.target as HTMLElement | null
       if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return
@@ -224,9 +246,9 @@ export function TopicHomeworkStudent({
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
-  }, [draftAttemptId, uploadingFiles, uploadPicked])
+  }, [draftAttemptId, draftHasPhotoTasks, uploadingFiles, uploadPicked])
 
-  if (loading) {
+  if (loading && (!activePhotoNumber || !homework)) {
     return (
       <div className={cn('flex items-center gap-2 py-6 text-sm text-gray-400', className)}>
         <Loader2 size={16} className="animate-spin" />
@@ -241,6 +263,53 @@ export function TopicHomeworkStudent({
   const accepted = acceptedAttempt(attempts)
   const taskFile = files[0] ?? null
   const draftFiles = active ? attemptFiles.filter(f => f.attempt_id === active.id) : []
+  const existingAttempt = active ?? accepted
+  const photoNumbers = (existingAttempt ? existingAttempt.photo_task_numbers : homework.photo_task_numbers) ?? []
+  const photoMode = photoNumbers.length > 0
+  const photoFiles = active ? draftFiles : accepted ? attemptFiles.filter(file => file.attempt_id === accepted.id) : []
+  const missingPhotoNumbers = missingHomeworkPhotoNumbers(photoNumbers, photoFiles)
+  const missingPhotoCount = missingPhotoNumbers.length
+  const selectedNumber = activePhotoNumber && photoNumbers.includes(activePhotoNumber)
+    ? activePhotoNumber
+    : (missingPhotoNumbers[0] ?? photoNumbers[0])
+  const remainingWorksheet = worksheetMaterials.filter(material => !photoNumbers.includes(worksheetNumber(material.title) ?? ''))
+  const selectedMaterials = selectedNumber ? worksheetMaterials.filter(material => worksheetNumber(material.title) === selectedNumber) : []
+  const selectedWorksheet = selectedMaterials.length > 0 ? selectedMaterials : remainingWorksheet.filter(material => {
+    const number = worksheetNumber(material.title)
+    return !number || (material.kind === 'file' && selectedNumber?.startsWith(number + '.'))
+  })
+  const photoFeedback = (
+    <>
+      {uploadingFiles && (
+        <p className="text-sm tabular-nums text-gray-600" role="status">
+          Загрузка файлов… {Math.round(uploads.reduce((total, file) => total + file.percent, 0) / uploads.length)}%
+        </p>
+      )}
+      {photoMode && (localError || error) && (
+        <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{localError || error}</p>
+      )}
+      {rejected.length > 0 && (
+        <p className="text-sm text-amber-800" role="alert">
+          {Array.from(new Set(rejected.map(file => file.problem))).join(' ')}
+        </p>
+      )}
+    </>
+  )
+
+  function submitPhotos(allowMissing: boolean) {
+    setConfirmPartial(false)
+    void run(async () => {
+      const id = draftAttemptId ?? await startAttempt(false)
+      if (!id) return
+      try {
+        await submitAttempt(id, allowMissing)
+      } catch (error) {
+        if (!draftAttemptId) reload()
+        throw error
+      }
+      onSubmitted?.()
+    })
+  }
 
   const gradeMax = gradeScaleMax(homework.grade_scale)
 
@@ -516,8 +585,16 @@ export function TopicHomeworkStudent({
         </div>
       )}
 
-      {(error || localError) && (
+      {!photoMode && (error || localError) && (
         <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{localError || error}</div>
+      )}
+
+      {remainingWorksheet.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {remainingWorksheet.map(material => (
+            <WorksheetMaterialCard key={material.id} material={material} topicId={topicId} countView={!preview} />
+          ))}
+        </div>
       )}
 
       {/* ── Условие ── */}
@@ -540,8 +617,63 @@ export function TopicHomeworkStudent({
         </div>
       )}
 
+      {photoMode && (
+        <div className="mt-4 space-y-3">
+          <ConfirmDialog
+            open={confirmPartial}
+            title="Отправить работу на проверку?"
+            text={`Без решения: ${missingPhotoCount} ${plural(missingPhotoCount, 'задание', 'задания', 'заданий')} из ${photoNumbers.length}.`}
+            cancelLabel="Продолжить решать"
+            confirmLabel="Всё равно сдать"
+            onCancel={() => setConfirmPartial(false)}
+            onConfirm={() => submitPhotos(true)}
+          />
+          <HomeworkTaskPhotos
+            numbers={photoNumbers}
+            files={photoFiles}
+            selected={selectedNumber}
+            condition={selectedWorksheet.length > 0 ? selectedWorksheet.map(material => (
+              <TopicMaterialContent key={material.id} material={material} topicId={topicId} countView={!preview} homeworkCondition />
+            )) : taskFile ? (
+              <SignedFileLink bucket={TOPIC_HOMEWORK_BUCKET} url={taskFile.storage_path} className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary-700">
+                <FileText size={17} aria-hidden /> Открыть рабочий лист
+              </SignedFileLink>
+            ) : null}
+            feedback={photoFeedback}
+            readOnly={!!accepted || (!!active && active.status !== 'draft')}
+            disabled={busy || loading || uploadingFiles || preview}
+            onSelect={number => {
+              setActivePhotoNumber(number)
+              if (!uploadingFiles) {
+                setRejected([])
+                setLocalError(null)
+              }
+            }}
+            onPick={(number, picked) => {
+              setActivePhotoNumber(number)
+              return uploadPicked(draftAttemptId, picked, { photoTaskNumber: number })
+            }}
+            onDelete={file => run(() => removeAttemptFile(file.id, file.storage_path))}
+          />
+          {!accepted && (!active || active.status === 'draft') && (
+            <Button
+              data-testid="hw-submit-attempt"
+              className="w-full"
+              onClick={() => {
+                if (missingPhotoCount) setConfirmPartial(true)
+                else submitPhotos(false)
+              }}
+              loading={busy}
+              disabled={loading || uploadingFiles || preview}
+            >
+              Сдать работу
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* ── Сборка сдачи (только если есть черновик) ── */}
-      {active && active.status === 'draft' && (
+      {!photoMode && active && active.status === 'draft' && (
         <div className="mt-4">
           {/* Заголовок с числом страниц */}
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
@@ -823,7 +955,7 @@ export function TopicHomeworkStudent({
           review={latestReview(reviews, featured.id)}
           files={attemptFiles.filter(f => f.attempt_id === featured.id)}
           rows={reviewTasks.filter(t => t.attempt_id === featured.id)}
-          resubmit={featured.status === 'returned_for_revision' && canResubmit ? {
+          resubmit={featured.status === 'returned_for_revision' && canResubmit && !photoMode ? {
             onClick: () => { void run(() => startAttempt()) },
             busy,
             disabled: preview,
@@ -839,7 +971,7 @@ export function TopicHomeworkStudent({
       )}
 
       {/* ── Начать сдачу ── */}
-      {!active && !accepted && !(featured && canResubmit) && (
+      {!photoMode && !active && !accepted && !(featured && canResubmit) && (
         <div className="mt-4">
           <Button
             data-testid="hw-start-attempt"

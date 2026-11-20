@@ -13,6 +13,7 @@ import {
   buildAttemptFilePath,
   buildHomeworkFilePath,
   homeworkFileProblem,
+  homeworkFileMime,
   type TopicHomeworkAttemptFileRow,
   type TopicHomeworkAttemptRow,
   type TopicHomeworkFileRow,
@@ -198,7 +199,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
   const updateHomework = useCallback(
     // §243: is_published в правке нет — флаг выдачи пишет только сервер
     // (сторож topic_homework_publish_guard), клиенту его не менять.
-    async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'due_at' | 'grade_scale' | 'opens_at' | 'closes_at'>>) => {
+    async (patch: Partial<Pick<TopicHomeworkRow, 'title' | 'instructions' | 'due_at' | 'grade_scale' | 'opens_at' | 'closes_at' | 'photo_task_numbers'>>) => {
       const current = homeworkRef.current
       if (!current) throw new Error('ДЗ ещё не создано')
       // `as never`: окна §240 нет в сгенерированных типах (они отстают от
@@ -277,13 +278,13 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
   // ── ученик ─────────────────────────────────────────────────
 
   /** Создаёт попытку или возвращает уже открытую: RPC идемпотентна. */
-  const startAttempt = useCallback(async (): Promise<string> => {
+  const startAttempt = useCallback(async (refresh = true): Promise<string> => {
     if (!homework) throw new Error('ДЗ не найдено')
     const { data, error: err } = await supabase.rpc('topic_homework_start_attempt', {
       p_homework_id: homework.id,
     })
     if (err) throw err
-    reload()
+    if (refresh) reload()
     return data as string
   }, [homework, reload])
 
@@ -302,6 +303,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       attemptId: string,
       incoming: File[],
       onProgress?: (index: number, percent: number) => void,
+      photoTaskNumber?: string,
     ): Promise<TopicHomeworkAttemptFileRow[]> => {
       if (incoming.length === 0) return []
 
@@ -319,7 +321,9 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       // Позиции продолжают уже приложенные страницы этой попытки. Раньше
       // здесь стоял жёсткий 0: при доклад­ывании файлов порядок в проверке
       // разъезжался, и рамки ИИ ложились не на ту страницу.
-      const basePosition = attemptFilesRef.current.filter(f => f.attempt_id === attemptId).length
+      const basePosition = attemptFilesRef.current.reduce((next, file) => (
+        file.attempt_id === attemptId ? Math.max(next, file.position + 1) : next
+      ), 0)
       const inserted: TopicHomeworkAttemptFileRow[] = []
 
       for (let i = 0; i < incoming.length; i++) {
@@ -327,7 +331,12 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
 
         // Пережимаем ДО построения пути: имя и расширение должны описывать
         // то, что реально ляжет в Storage.
-        const upload = await compressImageFile(incoming[i], HOMEWORK_PHOTO_PRESET)
+        const original = incoming[i]
+        const type = photoTaskNumber ? homeworkFileMime(original) : undefined
+        const source = type && type !== original.type
+          ? new File([original], original.name, { type, lastModified: original.lastModified })
+          : original
+        const upload = await compressImageFile(source, HOMEWORK_PHOTO_PRESET)
         const path = buildAttemptFilePath(attemptId, upload.name)
 
         await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload, onProgress ? p => onProgress(i, p) : undefined)
@@ -339,6 +348,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
             attempt_id: attemptId,
             storage_path: path,
             file_name: upload.name,
+            ...(photoTaskNumber ? { photo_task_number: photoTaskNumber } : {}),
             mime_type: upload.type,
             size_bytes: upload.size,
             position: basePosition + i,
@@ -346,7 +356,10 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
           .select('*')
           .single()
 
-        if (err) throw err
+        if (err) {
+          await supabase.storage.from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET).remove([path])
+          throw err
+        }
         const row = data as TopicHomeworkAttemptFileRow
         inserted.push(row)
         setAttemptFiles(prev => [...prev, row])
@@ -442,8 +455,11 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
     [reload],
   )
 
-  const submitAttempt = useCallback(async (attemptId: string) => {
-    const { error: err } = await supabase.rpc('topic_homework_submit_attempt', { p_attempt_id: attemptId })
+  const submitAttempt = useCallback(async (attemptId: string, allowMissingPhotos = false) => {
+    const args = { p_attempt_id: attemptId }
+    const { error: err } = allowMissingPhotos
+      ? await supabase.rpc('topic_homework_submit_incomplete_photos', args)
+      : await supabase.rpc('topic_homework_submit_attempt', args)
     if (err) throw err
     reload()
   }, [reload])
@@ -500,14 +516,14 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
  * не замыкания на каждый рендер: компонент держит их в зависимостях эффектов.
  */
 interface PreviewStudentActions {
-  startAttempt: () => Promise<string>
+  startAttempt: (refresh?: boolean) => Promise<string>
   uploadAttemptFiles: (
-    attemptId: string, incoming: File[], onProgress?: (index: number, percent: number) => void,
+    attemptId: string, incoming: File[], onProgress?: (index: number, percent: number) => void, photoTaskNumber?: string,
   ) => Promise<TopicHomeworkAttemptFileRow[]>
   uploadAttemptFile: (attemptId: string, file: File) => Promise<void>
   removeAttemptFile: (fileId: string, storagePath: string) => Promise<void>
   reorderAttemptFiles: (attemptId: string, orderedIds: string[]) => Promise<void>
-  submitAttempt: (attemptId: string) => Promise<void>
+  submitAttempt: (attemptId: string, allowMissingPhotos?: boolean) => Promise<void>
 }
 const PREVIEW_STUDENT_ACTIONS: PreviewStudentActions = {
   startAttempt: async () => { toast.info(PREVIEW_NOOP_MESSAGE); return '' },

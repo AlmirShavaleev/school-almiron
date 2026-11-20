@@ -29,6 +29,16 @@ const ENV = {
   CRON_SECRET: 'cron-secret-for-tests',
 }
 
+vi.mock('../../../supabase/functions/check-homework-ai/pdf.ts', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(),
+  renderPdfPages: async () => ({
+    total: 2, spentMs: 10, images: [
+      { page: 1, bytes: new Uint8Array([1]) },
+      { page: 2, bytes: new Uint8Array([2]) },
+    ],
+  }),
+}))
+
 let handler: Handler
 
 beforeAll(async () => {
@@ -103,6 +113,47 @@ describe('боевой путь (без benchmark)', () => {
     expect(call.headers.Authorization).toBe(`Bearer ${ENV.AI_API_KEY}`)
     expect(Object.keys(call.body as object)).toEqual(['model', 'messages', 'response_format', 'max_tokens'])
     expect(call.body).toMatchObject({ model: 'google/gemini-3.8-flash', response_format: { type: 'json_object' }, max_tokens: 16000 })
+  })
+
+  it('привязывает фото к номеру и показывает пропущенное решение при неполной сдаче', async () => {
+    const attempt = state.tables.topic_homework_attempts as Record<string, unknown>
+    Object.assign(attempt, { status: 'submitted', photo_task_numbers: ['2', '4'] })
+    const [file] = state.tables.topic_homework_attempt_files as Record<string, unknown>[]
+    state.tables.topic_homework_attempt_files = [{ ...file, photo_task_number: '2' }]
+    const model = modelAnswer() as { choices: { message: { content: string } }[] }
+    const answer = JSON.parse(model.choices[0].message.content)
+    answer.tasks = [answer.tasks[1]]
+    answer.findings = [answer.findings[0]]
+    model.choices[0].message.content = JSON.stringify(answer)
+    state.model = { status: 200, body: model }
+
+    const res = await handler(post({ attempt_id: ATTEMPT_ID }))
+    expect(await res.json()).toEqual({ job_id: 'job-1', findings: 1 })
+    expect(JSON.stringify(state.fetches[0].body)).toContain('Задание №2')
+    expect(touched('topic_homework_ai_jobs')[1].ops[0][1]).toMatchObject({
+      tasks: [
+        expect.objectContaining({ no: '2', verdict: 'wrong' }),
+        expect.objectContaining({ no: '4', verdict: 'unchecked', note: 'Решение не приложено' }),
+      ],
+    })
+  })
+
+  it('передаёт обе страницы одного PDF под его номером', async () => {
+    const attempt = state.tables.topic_homework_attempts as Record<string, unknown>
+    Object.assign(attempt, { status: 'submitted', photo_task_numbers: ['2'] })
+    const [file] = state.tables.topic_homework_attempt_files as Record<string, unknown>[]
+    state.tables.topic_homework_attempt_files = [{ ...file, file_name: 'solution.pdf', mime_type: 'application/pdf', photo_task_number: '2' }]
+    const model = modelAnswer() as { choices: { message: { content: string } }[] }
+    const answer = JSON.parse(model.choices[0].message.content)
+    answer.tasks = [answer.tasks[1]]
+    model.choices[0].message.content = JSON.stringify(answer)
+    state.model = { status: 200, body: model }
+
+    const res = await handler(post({ attempt_id: ATTEMPT_ID }))
+    expect(await res.json()).toEqual(expect.objectContaining({ job_id: 'job-1', findings: expect.any(Number) }))
+    const request = JSON.stringify(state.fetches[0].body)
+    expect(request).toContain('Страница #1: Задание №2 · solution.pdf, стр. 1')
+    expect(request).toContain('Страница #2: Задание №2 · solution.pdf, стр. 2')
   })
 
   it('AI_MODEL проекта идёт в бой как есть', async () => {

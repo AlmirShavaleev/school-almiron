@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { TopicHomeworkStudent } from '@/components/courseProgram/TopicHomeworkStudent'
 import type {
   TopicHomeworkAttemptRow,
@@ -676,5 +676,116 @@ describe('ДЗ ученику — файлы не того формата (§173
     await screen.findByTestId('hw-rejected-files')
     expect(screen.getByLabelText('Сфотографировать заново')).toBeInTheDocument()
     expect(screen.queryByTestId('hw-camera-button')).not.toBeInTheDocument()
+  })
+})
+
+describe('Домашнее задание с фото по номерам', () => {
+  it('показывает условие выбранного номера и три способа приложить решение под условием на странице', () => {
+    homework = { ...hw(), photo_task_numbers: ['14.1', '14.2'] }
+    render(<TopicHomeworkStudent topicId={TOPIC} worksheetMaterials={[
+      { id: 'm1', kind: 'text', title: 'Задание №14.1', content: 'Условие первого номера', position: 0, isVisible: true, section: 'worksheet_homework' },
+      { id: 'm2', kind: 'text', title: 'Задание №14.2', content: 'Условие второго номера', position: 1, isVisible: true, section: 'worksheet_homework' },
+      { id: 'm3', kind: 'text', title: '№14.3', content: 'Остальное условие', position: 2, isVisible: true, section: 'worksheet_homework' },
+    ]} />)
+
+    const first = within(screen.getByRole('article', { name: 'Задание №14.1' }))
+    expect(first.getByText('Условие первого номера')).toHaveClass('text-lg', 'sm:text-xl')
+    expect(first.getByLabelText('Прикрепить PDF для задания №14.1')).toHaveAttribute('accept', 'application/pdf,.pdf')
+    expect(first.getByLabelText('Прикрепить фото для задания №14.1')).toHaveAttribute('multiple')
+    expect(first.getByLabelText('Сфотографировать решение для задания №14.1')).toHaveAttribute('capture', 'environment')
+    expect(screen.getByText('Остальное условие')).toBeInTheDocument()
+
+    const secondButton = screen.getByRole('button', { name: 'Задание №14.2' })
+    fireEvent.click(secondButton)
+    expect(secondButton).toHaveAttribute('aria-current', 'step')
+    const second = within(screen.getByRole('article', { name: 'Задание №14.2' }))
+    expect(second.getByText('Условие второго номера')).toBeInTheDocument()
+    expect(second.getByLabelText('Прикрепить фото для задания №14.2')).toBeInTheDocument()
+    expect(screen.queryByText('Условие первого номера')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
+    expect(screen.getByRole('article', { name: 'Задание №14.1' })).toBeInTheDocument()
+  })
+
+  it('сохраняет первое фото в новом черновике и ждёт явной сдачи', async () => {
+    homework = { ...hw(), photo_task_numbers: ['2', '4'] }
+    const onSubmitted = vi.fn()
+    const { rerender } = render(<TopicHomeworkStudent topicId={TOPIC} onSubmitted={onSubmitted} />)
+    const submit = screen.getByRole('button', { name: 'Сдать работу' })
+    expect(submit).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №2' }))
+    const photo = new File(['solution'], 'solution.jpg', { type: 'image/jpeg' })
+    fireEvent.change(screen.getByLabelText('Прикрепить фото для задания №2'), {
+      target: { files: [photo] },
+    })
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledWith('att-new', [photo], expect.any(Function), '2'))
+    expect(startAttempt).toHaveBeenCalledWith(false)
+    expect(submitAttempt).not.toHaveBeenCalled()
+
+    expect(onSubmitted).not.toHaveBeenCalled()
+
+    // Данные, возвращённые сервером при повторном входе в урок.
+    attempts = [{ ...attempt(1, 'draft'), photo_task_numbers: ['2', '4'] }]
+    attemptFiles = [{
+      id: 'photo-2', attempt_id: 'att-1', storage_path: 'att-1/solution.jpg', file_name: 'solution.jpg',
+      mime_type: 'image/jpeg', photo_task_number: '2', size_bytes: 8, position: 0, created_at: '',
+    }]
+    rerender(<TopicHomeworkStudent topicId={TOPIC} onSubmitted={onSubmitted} />)
+    expect(screen.getByText('1 из 2 номеров')).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Задание №2' })).toBeInTheDocument()
+    fireEvent.click(submit)
+    expect(screen.getByRole('dialog')).toHaveTextContent('Без решения: 1 задание из 2.')
+    fireEvent.click(screen.getByRole('button', { name: 'Продолжить решать' }))
+    expect(submitAttempt).not.toHaveBeenCalled()
+
+    attemptFiles = [...attemptFiles, { ...attemptFiles[0], id: 'photo-4', photo_task_number: '4', position: 1 }]
+    rerender(<TopicHomeworkStudent topicId={TOPIC} onSubmitted={onSubmitted} />)
+    expect(submit).toBeEnabled()
+    fireEvent.click(submit)
+    await waitFor(() => expect(submitAttempt).toHaveBeenCalledExactlyOnceWith('att-1', false))
+    expect(onSubmitted).toHaveBeenCalledTimes(1)
+
+    attempts = [{ ...attempts[0], status: 'submitted' }]
+    rerender(<TopicHomeworkStudent topicId={TOPIC} />)
+    expect(screen.getByText('Работа сдана')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №2, решение приложено' }))
+    expect(screen.getByRole('article', { name: 'Задание №2' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Прикрепить фото для задания №2')).not.toBeInTheDocument()
+  })
+
+  it('отправляет неполную работу только после подтверждения', async () => {
+    homework = { ...hw(), photo_task_numbers: ['2', '4'] }
+    const { rerender } = renderStudent()
+    fireEvent.click(screen.getByRole('button', { name: 'Сдать работу' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Без решения: 2 задания из 2.')
+    expect(submitAttempt).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Всё равно сдать' }))
+    await waitFor(() => expect(submitAttempt).toHaveBeenCalledExactlyOnceWith('att-new', true))
+
+    attempts = [{ ...attempt(1, 'submitted'), photo_task_numbers: ['2', '4'] }]
+    rerender(<TopicHomeworkStudent topicId={TOPIC} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №2' }))
+    expect(screen.getByText('Решение не приложено')).toBeInTheDocument()
+  })
+
+  it('сохраняет PDF в черновике выбранного номера', async () => {
+    homework = { ...hw(), photo_task_numbers: ['2'] }
+    const { rerender } = renderStudent()
+    const pdf = new File(['solution'], 'solution.pdf', { type: 'application/pdf' })
+    fireEvent.change(screen.getByLabelText('Прикрепить PDF для задания №2'), {
+      target: { files: [pdf] },
+    })
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledWith('att-new', [pdf], expect.any(Function), '2'))
+    expect(submitAttempt).not.toHaveBeenCalled()
+
+    attempts = [{ ...attempt(1, 'draft'), photo_task_numbers: ['2'] }]
+    attemptFiles = [{
+      id: 'pdf-2', attempt_id: 'att-1', storage_path: 'att-1/solution.pdf', file_name: 'solution.pdf',
+      mime_type: 'application/pdf', photo_task_number: '2', size_bytes: 8, position: 0, created_at: '',
+    }]
+    rerender(<TopicHomeworkStudent topicId={TOPIC} />)
+    expect(screen.getByText('1 из 1 номеров')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'solution.pdf' })).toBeInTheDocument()
   })
 })

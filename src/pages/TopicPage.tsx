@@ -183,6 +183,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
 
   // Состояние моей работы — словами, для ряда «Домашнее задание».
   const homeworkState = useMyTopicHomeworkState(topicId ?? null)
+  const hasPhotoSubmission = homeworkState.hasPhotoSubmission
 
   // §224.2. Пробники группы — для баннера «Идёт пробник» сверху. Скриншот
   // жалобы владельца 26.09 был именно отсюда: ученик дошёл до темы, а про
@@ -405,6 +406,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   const availableTabs: TabKey[] = []
   // §240. Проверочная / контрольная: главное на странице — сама работа.
   const timed = isTimedKind(topic.kind)
+  const inlinePhotoWorksheet = hasPhotoSubmission && hasHomework && !timed
 
   // «Видео» стоит всегда, даже без видео: до перестройки на вкладки этот блок
   // с заглушкой «Видеоурок ещё не добавлен» был на странице постоянно, и его
@@ -495,7 +497,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
    *    не «прочитал». Автоматический учёт просмотров (§107) живёт отдельно.
    */
   function renderGroupMark(groupKey: TopicGroupKey) {
-    if (groupKey === 'homework' && isTraining && autocheck.state) {
+    if (groupKey === 'homework' && isTraining && !hasPhotoSubmission && autocheck.state) {
       const st = autocheck.state
       return (
         <span
@@ -672,7 +674,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           // материалы (условие, решение, критерии): перечитываем вкладки.
           onPhaseChange={() => { reloadMaterials?.() }}
         />
-      ) : key === 'homework' && isTraining ? (
+      ) : key === 'homework' && isTraining && !hasPhotoSubmission ? (
         autocheck.state ? (
           <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
         ) : (
@@ -681,16 +683,23 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           </div>
         )
       ) : key === 'homework' ? (
-        <TopicHomeworkStudent
-          topicId={topic.id}
-          // §239. После «Принято» разбор ведёт к авторскому решению: это та
-          // же вкладка «Решение ДЗ», её открывает база (`topic_solution_unlocked`).
-          solution={{ unlocked: solutionState.unlocked, hasSolution: solutionState.hasSolution }}
-          onOpenSolution={() => {
-            setChosen('solution')
-            window.requestAnimationFrame(() => tabsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }))
-          }}
-        />
+        <div className="space-y-4">
+          {isTraining && autocheck.state && autocheckTotal > 0 && (
+            <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
+          )}
+          <TopicHomeworkStudent
+            key={topic.id}
+            topicId={topic.id}
+            worksheetMaterials={inlinePhotoWorksheet ? studentMaterials.filter(material => material.section === 'worksheet_homework') : undefined}
+            onSubmitted={homeworkState.markSubmitted}
+            // §239. После «Принято» разбор ведёт к вкладке «Решение ДЗ».
+            solution={{ unlocked: solutionState.unlocked, hasSolution: solutionState.hasSolution }}
+            onOpenSolution={() => {
+              setChosen('solution')
+              window.requestAnimationFrame(() => tabsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }))
+            }}
+          />
+        </div>
       ) : key === 'test' ? (
         /* Задачи к уроку (§162) и тест из банка — разные системы. Если есть
            оба, показываем оба с подписями, а не выбираем один молча. */
@@ -820,7 +829,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       ) : activeSeg && !reviewOpen ? (
         // Владелец 15.10: рубрики раздела — подряд, без подвкладок.
         <div className="space-y-4" data-testid="topic-section-stack">
-          {activeSeg.tabs.map(k => (
+          {activeSeg.tabs.filter(key => !inlinePhotoWorksheet || key !== 'worksheet_homework').map(k => (
             <div key={k} data-testid={`topic-section-${k}`}>{renderSection(k as TabKey)}</div>
           ))}
         </div>

@@ -50,24 +50,23 @@ const isTheoryMaterial = (m: TopicMaterial) => m.kind === 'text' && isTheoryMark
 // ─── Одна карточка материала ──────────────────────────────────────────────────
 
 function MaterialCard({
-  material, topicId, canManage, countView, watchMark, isFirst, isLast,
+  material, topicId, canManage = false, countView, watchMark, isFirst = false, isLast = false,
   onDelete, onToggleVisibility, onMove,
 }: {
   material: TopicMaterial
   topicId: string
-  canManage: boolean
+  canManage?: boolean
   /** Считать открытие файла (§107): ученик — да, персонал и предпросмотр — нет. */
   countView: boolean
   /** Уже записанный просмотр этого видео (§204); undefined — записи нет. */
   watchMark?: VideoWatchMark
-  isFirst: boolean
-  isLast: boolean
-  onDelete: (id: string) => void
-  onToggleVisibility: (id: string, next: boolean) => void
-  onMove: (id: string, direction: 'up' | 'down') => void
+  isFirst?: boolean
+  isLast?: boolean
+  onDelete?: (id: string) => void
+  onToggleVisibility?: (id: string, next: boolean) => void
+  onMove?: (id: string, direction: 'up' | 'down') => void
 }) {
   const Icon = KIND_ICON[material.kind]
-  const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
 
   // У файла без своего названия шапка «Файл» дублирует плитку с именем файла —
   // ученику её не показываем. Преподавателю показываем всегда: в ней живут
@@ -112,7 +111,7 @@ function MaterialCard({
           <>
             <button
               type="button"
-              onClick={() => onMove(material.id, 'up')}
+              onClick={() => onMove?.(material.id, 'up')}
               disabled={isFirst}
               aria-label="Поднять выше"
               title="Поднять выше"
@@ -122,7 +121,7 @@ function MaterialCard({
             </button>
             <button
               type="button"
-              onClick={() => onMove(material.id, 'down')}
+              onClick={() => onMove?.(material.id, 'down')}
               disabled={isLast}
               aria-label="Опустить ниже"
               title="Опустить ниже"
@@ -132,7 +131,7 @@ function MaterialCard({
             </button>
             <button
               type="button"
-              onClick={() => onToggleVisibility(material.id, !material.isVisible)}
+              onClick={() => onToggleVisibility?.(material.id, !material.isVisible)}
               aria-label={material.isVisible ? 'Скрыть материал' : 'Показать материал'}
               title={material.isVisible ? 'Скрыть от учеников' : 'Показать ученикам'}
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:text-primary-600"
@@ -141,7 +140,7 @@ function MaterialCard({
             </button>
             <button
               type="button"
-              onClick={() => onDelete(material.id)}
+              onClick={() => onDelete?.(material.id)}
               aria-label="Удалить материал"
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
             >
@@ -152,12 +151,31 @@ function MaterialCard({
       </div>
       )}
 
+      <TopicMaterialContent material={material} topicId={topicId} countView={countView} watchMark={watchMark} />
+    </div>
+  )
+}
+
+export function WorksheetMaterialCard({ material, topicId, countView }: { material: TopicMaterial; topicId: string; countView: boolean }) {
+  return <MaterialCard material={material} topicId={topicId} countView={countView} />
+}
+
+export function TopicMaterialContent({ material, topicId, countView, watchMark, homeworkCondition = false }: {
+  material: TopicMaterial
+  topicId: string
+  countView: boolean
+  watchMark?: VideoWatchMark
+  homeworkCondition?: boolean
+}) {
+  const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
+  return (
+    <>
       {material.kind === 'text' && (isTheoryMarkdown(material.content)
         // Теория страницей: тот же исходник, что у PDF темы (theoryMarkdown.ts).
         ? <TheoryArticle source={material.content} />
         // break-words: ссылка или формула без пробелов иначе раздвигает
         // страницу шире экрана телефона (§158, аудит №5).
-        : <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{material.content}</p>
+        : <p className={cn('whitespace-pre-wrap break-words leading-relaxed', homeworkCondition ? 'text-lg text-gray-900 sm:text-xl' : 'text-sm text-gray-700')}>{material.content}</p>
       )}
 
       {material.kind === 'video' &&
@@ -193,9 +211,10 @@ function MaterialCard({
           topicId={topicId}
           sensitive={material.section === GATED_SECTION}
           countView={countView}
+          homeworkCondition={homeworkCondition}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -205,7 +224,7 @@ function MaterialCard({
  * и на телефоне; кликается вся плитка, а не только слово.
  */
 function FileTile({
-  materialId, storagePath, fileName, sizeBytes, topicId, sensitive = false, countView = false,
+  materialId, storagePath, fileName, sizeBytes, topicId, sensitive = false, countView = false, homeworkCondition = false,
 }: {
   materialId: string
   storagePath: string
@@ -216,6 +235,7 @@ function FileTile({
   sensitive?: boolean
   /** Считать открытие файла: только ученический список, не преподавательский. */
   countView?: boolean
+  homeworkCondition?: boolean
 }) {
   const name = fileName || 'Скачать файл'
   const ext = (name.includes('.') ? name.split('.').pop() ?? '' : '').toUpperCase()
@@ -247,18 +267,18 @@ function FileTile({
           sensitive={sensitive}
           onClick={recordView}
           title="Открыть изображение в полном размере"
-          className="block overflow-hidden rounded-xl border border-gray-200 transition-colors hover:border-primary-300"
+          className={cn('block rounded-xl border border-gray-200 transition-colors hover:border-primary-300', homeworkCondition ? 'overflow-x-auto' : 'overflow-hidden')}
         >
           <SignedImage
             bucket={bucket}
             path={storagePath}
             sensitive={sensitive}
             alt={fileName || 'Материал темы'}
-            className="max-h-[420px] w-full bg-gray-50 object-contain"
+            className={cn('w-full', homeworkCondition ? 'min-w-[720px] bg-white' : 'max-h-[420px] bg-gray-50 object-contain')}
           />
         </SignedFileLink>
-        <figcaption className="truncate text-xs text-gray-400">
-          {name}{ext && ` · ${ext}`}{formatBytes(sizeBytes) ? ` · ${formatBytes(sizeBytes)}` : ''}
+        <figcaption className="truncate text-xs text-gray-500">
+          {homeworkCondition ? 'Нажмите на условие, чтобы открыть его целиком' : [name, ext, formatBytes(sizeBytes)].filter(Boolean).join(' · ')}
         </figcaption>
       </figure>
     )

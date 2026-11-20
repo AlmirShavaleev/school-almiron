@@ -157,6 +157,7 @@ interface AttemptFile {
   id: string
   storage_path: string
   file_name: string | null
+  photo_task_number: string | null
   mime_type: string | null
   position: number
 }
@@ -407,13 +408,17 @@ async function runCheck(
   // Шаг 2. Условие задания и решение из материалов темы — контекст для модели.
   const { data: attempt } = await admin
     .from('topic_homework_attempts')
-    .select('id, homework_id, homework:topic_homework!inner(id, title, instructions, grade_scale, topic_id)')
+    .select('id, homework_id, status, photo_task_numbers, homework:topic_homework!inner(id, title, instructions, grade_scale, topic_id)')
     .eq('id', attemptId)
     .single()
 
   const homework = (attempt as Record<string, any> | null)?.homework
   const topicId: string | null = homework?.topic_id ?? null
   const gradeScale: string | null = homework?.grade_scale ?? null
+  const photoNumbers: string[] = attempt?.photo_task_numbers ?? []
+  if (photoNumbers.length && attempt?.status === 'draft') {
+    throw new Error('ИИ-проверка доступна после сдачи работы.')
+  }
 
   // Эталон. До §135 здесь стояло `.eq('kind','text')`, а на проде ВСЕ 844
   // решения рубрики `solution` — PDF-файлы: эталон не доезжал до модели ни
@@ -465,7 +470,7 @@ async function runCheck(
   // Шаг 3. Страницы работы.
   const { data: rawFiles } = await admin
     .from('topic_homework_attempt_files')
-    .select('id, storage_path, file_name, mime_type, position')
+    .select('id, storage_path, file_name, mime_type, photo_task_number, position')
     .eq('attempt_id', attemptId)
     .order('position', { ascending: true })
 
@@ -494,9 +499,22 @@ async function runCheck(
       : 'Не удалось прочитать ни одной страницы работы')
   }
 
+  if (photoNumbers.length) {
+    const actual = new Set(sent.map(page => page.file.photo_task_number))
+    const readFileCount = new Set(sent.map(page => page.file.id)).size
+    if (skipped.length || readFileCount !== all.length || [...actual].some(number => !number || !photoNumbers.includes(number))) {
+      throw new Error(`Не удалось прочитать все файлы по номерам.${skipped.length ? ' ' + skipped.join('; ') : ''}`)
+    }
+  }
+
+  const availablePhotoNumbers = new Set(sent.map(page => page.file.photo_task_number))
+  const checkedPhotoNumbers = photoNumbers.filter(number => availablePhotoNumbers.has(number))
+  const missingPhotoNumbers = photoNumbers.filter(number => !availablePhotoNumbers.has(number))
   const content: Record<string, unknown>[] = []
   for (const [index, item] of sent.entries()) {
-    content.push({ type: 'text', text: `Страница #${index + 1}: ${item.label}` })
+    const number = item.file.photo_task_number
+    const taskLabel = number ? `Задание №${number} · ` : ''
+    content.push({ type: 'text', text: `Страница #${index + 1}: ${taskLabel}${item.label}` })
     content.push({ type: 'image_url', image_url: { url: `data:${item.mime};base64,${base64(item.bytes)}` } })
   }
 
@@ -518,6 +536,7 @@ async function runCheck(
     criteriaPoints: withPoints,
     gradeScale,
     pageCount: sent.length,
+    photoNumbers: checkedPhotoNumbers,
   })
 
   // Тело — `chatRequestBody` (бой; max_tokens по модели, у Gemini 16000) или
@@ -558,6 +577,16 @@ async function runCheck(
   // ответа модели в базу не идёт (кроме случая, когда таблицы нет вовсе —
   // тогда оно сохраняется с confidence low, и панель его не показывает).
   const tasksRaw = parseTasks(parsed.tasks, { points: withPoints })
+  if (checkedPhotoNumbers.length) {
+    const checked = new Set(tasksRaw.map(task => task.no))
+    if (tasksRaw.length !== checkedPhotoNumbers.length || checkedPhotoNumbers.some(number => !checked.has(number))) {
+      throw new Error('ИИ вернул другой список номеров. Запустите проверку повторно или проверьте работу вручную.')
+    }
+  }
+
+  for (const no of missingPhotoNumbers) {
+    tasksRaw.push({ no, verdict: 'unchecked', student_answer: '', expected_answer: '', note: 'Решение не приложено' })
+  }
 
   // Рамки проверяем ДО фильтра по таблице: если первую находку строки
   // отбросить после лимита «одна на задание», строка останется без находки,
@@ -570,6 +599,11 @@ async function runCheck(
     const index = Number(raw?.page_index ?? raw?.file_index)
     const target = sent[Number.isFinite(index) ? index - 1 : -1]
     if (!target) { badRects += 1; continue }
+    const task = String(raw?.task ?? raw?.task_no ?? '').trim().slice(0, 16)
+    if (target.file.photo_task_number && target.file.photo_task_number !== task.replace(/^№\s*/, '')) {
+      badRects += 1
+      continue
+    }
 
     const rect = raw?.rect ?? {}
     const x = clamp01(rect.x)
@@ -588,7 +622,7 @@ async function runCheck(
     drafts.push({
       category,
       text: note,
-      task: String(raw?.task ?? raw?.task_no ?? '').trim().slice(0, 16),
+      task,
       target,
       rect: { x, y, w, h },
     })
@@ -1156,6 +1190,7 @@ function buildPrompt(ctx: {
   criteriaPoints?: boolean
   gradeScale: string | null
   pageCount: number
+  photoNumbers: string[]
 }): string {
   const scale = ctx.gradeScale === 'five'
     ? 'Оценка по пятибалльной шкале: целое число от 2 до 5.'
@@ -1194,7 +1229,9 @@ function buildPrompt(ctx: {
     // §180. Сначала таблица по заданиям, потом находки только по неверным.
     // Прежний шаг «отметь удачные ходы» убран: он и породил поток praise —
     // 39 % находок в выгрузке 15.09, по одной похвале на каждую верную задачу.
-    '4. Составь ТАБЛИЦУ ПО ЗАДАНИЯМ — по одной строке на каждое задание работы. Список заданий бери из условия (рабочего листа); если условия нет — из того, что нашёл в работе. В строке: номер, вердикт, ответ ученика КАК ТЫ ЕГО ПРОЧИТАЛ, ожидаемый ответ (по эталону или своему решению), короткая заметка.',
+    ctx.photoNumbers.length
+      ? `4. Составь ТАБЛИЦУ ПО ЗАДАНИЯМ. Проверь только номера ${ctx.photoNumbers.join(', ')} и верни ровно по одной строке на каждый номер. Используй точные номера в поле no. Перед каждой страницей указан номер задания. Несколько страниц с одним номером относятся к одному решению. В строке укажи номер, вердикт, прочитанный ответ, ожидаемый ответ и короткую заметку.`
+      : '4. Составь ТАБЛИЦУ ПО ЗАДАНИЯМ — по одной строке на каждое задание работы. Список заданий бери из условия (рабочего листа); если условия нет — из того, что нашёл в работе. В строке: номер, вердикт, ответ ученика КАК ТЫ ЕГО ПРОЧИТАЛ, ожидаемый ответ (по эталону или своему решению), короткая заметка.',
     '5. Находки — ТОЛЬКО по строкам таблицы с вердиктом wrong или partial: не больше одной на задание, с рамкой ровно на месте ошибки. По верным заданиям находок не пиши.',
     '',
     `Тебе передано страниц: ${ctx.pageCount}. Перед каждой идёт строка «Страница #N: имя». Многостраничный PDF разложен на страницы, у каждой свой номер.`,

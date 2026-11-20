@@ -17,6 +17,7 @@ import type { CheckResult } from '@/hooks/useTopicAutocheck'
 import { cn } from '@/utils/cn'
 import { renderCatalogContent } from '@/lib/catalogContent'
 import { upgradeMathIn } from '@/lib/katexLoader'
+import { TopicTaskNumberButton } from './TopicTaskNumberButton'
 
 /**
  * §266. Блок «Задачи с автопроверкой» тренировочного урока — по макету
@@ -135,22 +136,16 @@ function TaskStepper({
             const active = i === idx
             return (
               <li key={t.id}>
-                <button
-                  type="button"
+                <TopicTaskNumberButton
+                  active={active}
                   data-testid="autocheck-step"
                   data-tone={tone}
-                  aria-current={active ? 'step' : undefined}
                   aria-label={`Задача ${i + 1}: ${STEP_LABEL[tone]}`}
                   onClick={() => setCurrent(i)}
-                  className={cn(
-                    'grid h-9 min-w-9 place-items-center rounded-lg border-[1.5px] px-1.5 text-[13px] font-extrabold tabular-nums transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1',
-                    STEP_CLS[tone],
-                    active && 'ring-2 ring-primary-600 ring-offset-2',
-                  )}
+                  className={STEP_CLS[tone]}
                 >
                   {i + 1}
-                </button>
+                </TopicTaskNumberButton>
               </li>
             )
           })}

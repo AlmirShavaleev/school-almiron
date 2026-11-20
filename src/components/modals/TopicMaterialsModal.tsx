@@ -840,11 +840,11 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   // ответы и критерии (решение владельца 28.09): остальное на работе по времени
   // лишнее. Время, публикация и оценка — блоком «Время и сдача» под плитками,
   // а не отдельной плиткой.
-  // §266. Тренировочный урок: вместо ДЗ на проверку — задачи с автопроверкой,
-  // блоком под плитками; плитки «Домашнее задание» у него нет.
+  // В тренировке задач с автопроверкой их редактор остаётся под плитками.
+  // У прикреплённого ДЗ с рабочим листом есть отдельная плитка сдачи фото.
   const training = !timed && formatVal === 'training'
   const TILES = (timed ? TIMED_TILE_ORDER : TOPIC_SECTION_ORDER).filter(isTopicSectionVisible)
-    .filter(key => !(training && key === 'homework')).map(key => ({
+    .filter(key => !(training && key === 'homework' && (!homework?.photo_task_numbers || homework.autocheck))).map(key => ({
     key,
     label: sectionLabel(key, timed),
     icon: TILE_ICON[key],
