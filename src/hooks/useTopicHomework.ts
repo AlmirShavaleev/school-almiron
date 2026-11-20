@@ -13,7 +13,7 @@ import {
   buildAttemptFilePath,
   buildHomeworkFilePath,
   homeworkFileProblem,
-  homeworkPhotoMime,
+  homeworkFileMime,
   type TopicHomeworkAttemptFileRow,
   type TopicHomeworkAttemptRow,
   type TopicHomeworkFileRow,
@@ -316,9 +316,6 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       for (const file of incoming) {
         const problem = homeworkFileProblem(file)
         if (problem) throw new Error(problem)
-        if (photoTaskNumber && !homeworkPhotoMime(file)) {
-          throw new Error('Для этого номера загрузите фото решения.')
-        }
       }
 
       // Позиции продолжают уже приложенные страницы этой попытки. Раньше
@@ -335,7 +332,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
         // Пережимаем ДО построения пути: имя и расширение должны описывать
         // то, что реально ляжет в Storage.
         const original = incoming[i]
-        const type = photoTaskNumber ? homeworkPhotoMime(original) : undefined
+        const type = photoTaskNumber ? homeworkFileMime(original) : undefined
         const source = type && type !== original.type
           ? new File([original], original.name, { type, lastModified: original.lastModified })
           : original

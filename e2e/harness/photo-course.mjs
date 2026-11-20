@@ -19,7 +19,23 @@ const personas = fixJson(harnessPersonas)
 const topicId = IDS.topic(1)
 const homeworkId = IDS.hw(1)
 const bucket = 'topic-homework-attempts'
-const numbers = tasks.map(task => task.number)
+const manifest = process.env.ALMIRON_EGE14_MANIFEST
+const geometryLessons = manifest ? JSON.parse(await fs.readFile(manifest, 'utf8')) : []
+const lessons = [
+  {
+    topicId, homeworkId, title: TOPIC_TITLE, order: 1, moduleId: IDS.module,
+    homeworkTitle: 'Тригонометрические уравнения',
+    numbers: tasks.map(task => task.number),
+  },
+  ...geometryLessons.map(({ index, title, count, materials }) => ({
+    topicId: IDS.topic(100 + index), homeworkId: IDS.hw(100 + index), title, order: index,
+    moduleId: IDS.module2, homeworkTitle: 'ДЗ · ' + title,
+    numbers: Array.from({ length: count }, (_, i) => String(i + 1)),
+    materials,
+  })),
+]
+const homeworkIds = new Set(lessons.map(lesson => lesson.homeworkId))
+const storageMaterials = new Map()
 const migration = await fs.readFile(new URL('../../supabase/migrations/_pending/topic_homework_photos_by_number.sql', import.meta.url), 'utf8')
 const sessions = Object.fromEntries(['student', 'owner'].map(role => [role, makeSession(personas[role].user)]))
 const serviceKey = 'local-demo-service'
@@ -56,18 +72,25 @@ await db.exec([
   'create policy fixture_original_storage on storage.objects to authenticated using(true) with check(true);',
 ].join('\n'))
 await db.transaction(tx => tx.exec(migration))
-await db.query("insert into public.topics values($1,'lesson')", [topicId])
-await db.query('insert into public.topic_homework(id,topic_id,photo_task_numbers) values($1,$2,$3::text[])', [homeworkId, topicId, numbers])
+for (const lesson of lessons) {
+  await db.query("insert into public.topics values($1,'lesson')", [lesson.topicId])
+  await db.query('insert into public.topic_homework(id,topic_id,photo_task_numbers) values($1,$2,$3::text[])',
+    [lesson.homeworkId, lesson.topicId, lesson.numbers])
+}
 
+const aiModule = new URL('../../supabase/functions/check-homework-ai/index.ts', import.meta.url)
 registerHooks({
   resolve(specifier, context, next) {
+    if (specifier === './pdf.ts' && context.parentURL === aiModule.href) {
+      return { url: new URL('./photo-course-pdf.mjs', import.meta.url).href, shortCircuit: true }
+    }
     if (specifier === 'jsr:@supabase/supabase-js@2') return { url: import.meta.resolve('@supabase/supabase-js'), shortCircuit: true }
     return next(specifier, context)
   },
 })
 let aiCheck
 globalThis.Deno = { env: { get: name => environment[name] }, serve: handler => { aiCheck = handler } }
-await import('../../supabase/functions/check-homework-ai/index.ts')
+await import(aiModule.href)
 
 const materials = [
   ...tasks.map((task, index) => ({
@@ -77,6 +100,20 @@ const materials = [
 ].map((row, index) => ({
   ...row, id: IDS.material(700 + index), topic_id: topicId, kind: 'text', is_visible: true, track: 'ege',
 }))
+
+for (const lesson of lessons.slice(1)) {
+  for (const [position, material] of lesson.materials.entries()) {
+    const mimeType = material.path.endsWith('.png') ? 'image/png' : 'application/pdf'
+    const name = 'local-ege14/' + lesson.order + '/' + position + (mimeType === 'image/png' ? '.png' : '.pdf')
+    const stat = await fs.stat(material.path)
+    storageMaterials.set(name, { ...material, mimeType, token: randomUUID() })
+    materials.push({
+      id: IDS.material(1000 + materials.length), topic_id: lesson.topicId, kind: 'file',
+      is_visible: true, track: 'ege', section: material.section, title: material.title, position,
+      content: null, url: null, storage_path: name, file_name: material.name, size_bytes: stat.size, mime_type: mimeType,
+    })
+  }
+}
 
 function fixtures(role) {
   const fx = baseFixtures(role === 'owner' ? 'ownerTeacher' : 'student')
@@ -91,21 +128,35 @@ function fixtures(role) {
   fx.tables.group_students = fx.tables.group_students
     .filter(row => row.group_id === group.id && row.student_id === IDS.studentRow)
     .map(row => ({ ...row, groups: group }))
-  const topic = fx.tables.topics.find(row => row.id === topicId)
-  Object.assign(topic, { title: TOPIC_TITLE, kind: 'lesson', lesson_format: 'training', is_open: true, available_from: null })
-  fx.tables.topics = [topic]
+  const exampleTopic = fx.tables.topics.find(row => row.id === topicId)
+  const exampleHomework = fx.tables.topic_homework.find(row => row.id === homeworkId)
+  fx.tables.modules = fx.tables.modules.filter(module =>
+    module.id === IDS.module || (geometryLessons.length && module.id === IDS.module2))
   for (const module of fx.tables.modules) {
-    if (module.course_id === IDS.course) module.topics = [topic]
+    module.title = module.id === IDS.module ? 'Демонстрационный урок' : '№14 · Стереометрия'
+    module.order_index = module.id === IDS.module ? 2 : 1
+    module.courses = course
+    delete module.topics
   }
-  for (const courseEmbed of [topic.modules?.courses, topic.module?.course]) {
-    if (courseEmbed) Object.assign(courseEmbed, course)
+  fx.tables.topics = lessons.map(lesson => ({
+    ...exampleTopic, id: lesson.topicId, title: lesson.title, order_index: lesson.order,
+    module_id: lesson.moduleId, modules: fx.tables.modules.find(module => module.id === lesson.moduleId),
+    kind: 'lesson', lesson_format: 'training', is_open: true, available_from: null,
+    ege_task_numbers: lesson.moduleId === IDS.module2 ? [14] : [],
+  }))
+  for (const module of fx.tables.modules) {
+    module.topics = fx.tables.topics.filter(topic => topic.module_id === module.id)
+      .map(({ modules: _modules, ...topic }) => topic)
   }
-  const homework = fx.tables.topic_homework.find(row => row.id === homeworkId)
-  Object.assign(homework, {
-    title: 'Тригонометрические уравнения', instructions: 'Решите три задачи. Прикрепите фото каждого решения и нажмите «Сдать работу».',
-    photo_task_numbers: numbers, due_at: null, is_published: true, autocheck: false, topic, topics: topic,
+  fx.tables.topic_homework = lessons.map((lesson, index) => {
+    const topic = fx.tables.topics[index]
+    return {
+      ...exampleHomework, id: lesson.homeworkId, topic_id: lesson.topicId,
+      title: lesson.homeworkTitle, instructions: 'Откройте номер и приложите решение. Отправьте работу после того, как закончите.',
+      photo_task_numbers: lesson.numbers, due_at: null, is_published: true, autocheck: false, topic, topics: topic,
+    }
   })
-  fx.tables.topic_homework = [homework]
+  const homeworkById = new Map(fx.tables.topic_homework.map(homework => [homework.id, homework]))
   fx.tables.topic_material_items = role === 'student' ? materials.filter(row => row.section !== 'solution') : materials
   Object.assign(fx.tables, {
     topic_homework_reviews: [], topic_homework_ai_jobs: role === 'student' ? [] : jobs,
@@ -146,7 +197,7 @@ function fixtures(role) {
     }
     if (table === 'topic_homework_ai_findings' && method === 'POST') findings.push(...rows)
   }
-  return { fx, homework }
+  return { fx, homeworkById }
 }
 
 const byRole = Object.fromEntries(['student', 'owner', 'service'].map(role => [role, fixtures(role)]))
@@ -171,10 +222,10 @@ function demoModel(body) {
   }))
   const result = {
     readable: true, confidence: 'low', findings: [],
-    summary: 'Демонстрационный разбор. Фото получены с номерами заданий. Модель возвращает тестовый ответ и не оценивает содержание снимков.',
-    tasks: tasks.filter(task => seen.has(task.number)).map(task => ({
-      no: task.number, verdict: 'unchecked', student_answer: '', expected_answer: task.answer,
-      note: 'Тестовый ответ модели. На реальном провайдере здесь появится разбор фото.',
+    summary: 'Демонстрационный разбор. Файлы получены с номерами заданий.',
+    tasks: [...seen].map(number => ({
+      no: number, verdict: 'unchecked', student_answer: '', expected_answer: tasks.find(task => task.number === number)?.answer ?? '',
+      note: 'Тестовый ответ модели. На реальном провайдере здесь появится разбор решения.',
     })),
   }
   return { choices: [{ message: { content: JSON.stringify(result) } }] }
@@ -185,8 +236,9 @@ function send(res, data, status = 200) {
   res.end(JSON.stringify(data))
 }
 
-function launch(res, role, host) {
-  const page = role === 'owner' ? '/homework-queue' : '/my-course/' + IDS.group + '/topic/' + topicId + '?tab=homework'
+const coursePage = '/my-course/' + IDS.group
+
+function launch(res, role, host, page) {
   const key = 'sb-' + host.split(':')[0].split('.')[0] + '-auth-token'
   const script = [
     'localStorage.setItem(' + JSON.stringify(key) + ',' + JSON.stringify(JSON.stringify(sessions[role])) + ')',
@@ -203,9 +255,13 @@ function launch(res, role, host) {
 async function middleware(req, res, next) {
   const url = new URL(req.url, origin)
   const pathname = url.pathname
-  if (pathname === '/__photo_course/student' || pathname === '/__photo_course/teacher') {
-    return launch(res, pathname.endsWith('/teacher') ? 'owner' : 'student', req.headers.host)
+  if (pathname === '/__photo_course/teacher') return launch(res, 'owner', req.headers.host, '/homework-queue')
+  if (pathname === '/__photo_course/student' || pathname === '/__photo_course/section-14') {
+    const lesson = pathname.endsWith('/section-14') ? lessons[1] : lessons[0]
+    const page = lesson ? coursePage + '/topic/' + lesson.topicId + '?tab=homework' : coursePage
+    return launch(res, 'student', req.headers.host, page)
   }
+  if (pathname === '/__photo_course/course') return launch(res, 'student', req.headers.host, coursePage)
   if (!/^\/(auth|rest|storage|functions)\/v1\//.test(pathname) && !pathname.startsWith('/__photo_course/model/')) return next()
 
   const chunks = []
@@ -214,7 +270,7 @@ async function middleware(req, res, next) {
   const parse = () => JSON.parse(buffer.toString() || '{}')
   const bearer = req.headers.authorization?.slice(7)
   const role = bearer === serviceKey ? 'service' : bearer === sessions.owner.access_token ? 'owner' : 'student'
-  const { fx, homework } = byRole[role]
+  const { fx, homeworkById } = byRole[role]
   try {
     if (pathname === '/__photo_course/model/chat/completions') return send(res, demoModel(parse()))
     if (pathname === '/functions/v1/check-homework-ai') {
@@ -226,7 +282,8 @@ async function middleware(req, res, next) {
       const procedure = pathname.split('/').pop()
       if (procedure === 'rpc_batch') return send(res, null, 404)
       if (procedure === 'topic_homework_start_attempt') {
-        if (role !== 'student' || parse().p_homework_id !== homeworkId) return send(res, { message: 'Тема не найдена' }, 404)
+        const homeworkId = parse().p_homework_id
+        if (role !== 'student' || !homeworkIds.has(homeworkId)) return send(res, { message: 'Тема не найдена' }, 404)
         const id = await asUser(role, async tx => {
           const existing = await tx.query("select id from public.topic_homework_attempts where homework_id=$1 and status in ('draft','submitted')", [homeworkId])
           if (existing.rows.length) return existing.rows[0].id
@@ -260,7 +317,7 @@ async function middleware(req, res, next) {
     }
     if (pathname === '/rest/v1/topic_homework_attempts') {
       const result = await asUser(role, tx => tx.query('select * from public.topic_homework_attempts'))
-      fx.tables.topic_homework_attempts = result.rows.map(row => ({ ...row, homework }))
+      fx.tables.topic_homework_attempts = result.rows.map(row => ({ ...row, homework: homeworkById.get(row.homework_id) }))
     }
     if (pathname === '/rest/v1/topic_homework_attempt_files') {
       if (req.method === 'POST') {
@@ -277,6 +334,20 @@ async function middleware(req, res, next) {
         return res.end()
       }
       fx.tables.topic_homework_attempt_files = (await asUser(role, tx => tx.query('select * from public.topic_homework_attempt_files'))).rows
+    }
+    const material = pathname.match(/^\/storage\/v1\/object\/(?:(sign|authenticated)\/)?topic-materials\/(local-ege14\/.+)$/)
+    if (material) {
+      const [, mode, encoded] = material
+      const asset = storageMaterials.get(decodeURIComponent(encoded))
+      const signed = mode === 'sign' && url.searchParams.get('token') === asset?.token
+      const allowed = role === 'owner' || role === 'service' || asset?.section !== 'solution'
+      if (!asset || (!signed && !allowed)) return send(res, { message: 'Файл не найден' }, 404)
+      if (mode === 'sign' && req.method === 'POST') {
+        return send(res, { signedURL: '/object/sign/topic-materials/' + encoded + '?token=' + asset.token })
+      }
+      if (req.method !== 'GET' || (mode === 'sign' && !signed)) return send(res, { message: 'Файл не найден' }, 404)
+      res.writeHead(200, { 'Content-Type': asset.mimeType, 'Cache-Control': 'private, max-age=300' })
+      return res.end(await fs.readFile(asset.path))
     }
     const object = pathname.match(/^\/storage\/v1\/object\/(?:(upload\/sign|sign|authenticated)\/)?topic-homework-attempts\/(.+)$/)
     if (object) {
@@ -341,4 +412,8 @@ const server = await createServer({
 })
 await server.listen()
 console.log('Ученик  ' + origin + '/__photo_course/student')
+if (geometryLessons.length) {
+  console.log('Курс    ' + origin + '/__photo_course/course')
+  console.log('№14     ' + origin + '/__photo_course/section-14')
+}
 console.log('Учитель http://localhost:' + port + '/__photo_course/teacher')

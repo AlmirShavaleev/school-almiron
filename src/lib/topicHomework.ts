@@ -53,12 +53,13 @@ export const HOMEWORK_PHOTO_ACCEPT = HOMEWORK_PHOTO_MIMES.flatMap(type => [
   type, ...HOMEWORK_FILE_TYPES[type].map(ext => '.' + ext),
 ]).join(',')
 
-export function homeworkPhotoMime(file: { name: string; type: string }): string | undefined {
-  const type = file.type.toLowerCase()
+export function homeworkFileMime(file: { name: string; type?: string | null }): string | undefined {
+  const type = (file.type ?? '').toLowerCase()
   if (type && type !== 'application/octet-stream') {
-    return HOMEWORK_PHOTO_MIMES.includes(type) ? type : undefined
+    return Object.prototype.hasOwnProperty.call(HOMEWORK_FILE_TYPES, type) ? type : undefined
   }
-  return HOMEWORK_PHOTO_MIMES.find(mime => HOMEWORK_FILE_TYPES[mime].includes(fileExtension(file.name)))
+  const extension = fileExtension(file.name)
+  return Object.keys(HOMEWORK_FILE_TYPES).find(mime => HOMEWORK_FILE_TYPES[mime].includes(extension))
 }
 
 export function missingHomeworkPhotoNumbers(numbers: readonly string[], files: readonly TopicHomeworkAttemptFileRow[]) {
@@ -328,12 +329,7 @@ function isRawPhoto(type: string, ext: string): boolean {
 export function homeworkFileProblem(file: { name: string; type?: string | null }): string | null {
   const type = (file.type ?? '').toLowerCase()
   const ext = fileExtension(file.name)
-  const typeKnown = type !== '' && type !== 'application/octet-stream'
-
-  const ok = typeKnown
-    ? type in HOMEWORK_FILE_TYPES
-    : Object.values(HOMEWORK_FILE_TYPES).some(exts => exts.includes(ext))
-  if (ok) return null
+  if (homeworkFileMime(file)) return null
 
   const shown = ext ? `.${ext}` : 'без расширения'
   if (isRawPhoto(type, ext)) {

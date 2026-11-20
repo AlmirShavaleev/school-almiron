@@ -160,11 +160,12 @@ export function WorksheetMaterialCard({ material, topicId, countView }: { materi
   return <MaterialCard material={material} topicId={topicId} countView={countView} />
 }
 
-export function TopicMaterialContent({ material, topicId, countView, watchMark }: {
+export function TopicMaterialContent({ material, topicId, countView, watchMark, homeworkCondition = false }: {
   material: TopicMaterial
   topicId: string
   countView: boolean
   watchMark?: VideoWatchMark
+  homeworkCondition?: boolean
 }) {
   const embed = material.kind === 'video' ? getVideoEmbedUrl(material.url) : null
   return (
@@ -174,7 +175,7 @@ export function TopicMaterialContent({ material, topicId, countView, watchMark }
         ? <TheoryArticle source={material.content} />
         // break-words: ссылка или формула без пробелов иначе раздвигает
         // страницу шире экрана телефона (§158, аудит №5).
-        : <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{material.content}</p>
+        : <p className={cn('whitespace-pre-wrap break-words leading-relaxed', homeworkCondition ? 'text-lg text-gray-900 sm:text-xl' : 'text-sm text-gray-700')}>{material.content}</p>
       )}
 
       {material.kind === 'video' &&
@@ -210,6 +211,7 @@ export function TopicMaterialContent({ material, topicId, countView, watchMark }
           topicId={topicId}
           sensitive={material.section === GATED_SECTION}
           countView={countView}
+          homeworkCondition={homeworkCondition}
         />
       )}
     </>
@@ -222,7 +224,7 @@ export function TopicMaterialContent({ material, topicId, countView, watchMark }
  * и на телефоне; кликается вся плитка, а не только слово.
  */
 function FileTile({
-  materialId, storagePath, fileName, sizeBytes, topicId, sensitive = false, countView = false,
+  materialId, storagePath, fileName, sizeBytes, topicId, sensitive = false, countView = false, homeworkCondition = false,
 }: {
   materialId: string
   storagePath: string
@@ -233,6 +235,7 @@ function FileTile({
   sensitive?: boolean
   /** Считать открытие файла: только ученический список, не преподавательский. */
   countView?: boolean
+  homeworkCondition?: boolean
 }) {
   const name = fileName || 'Скачать файл'
   const ext = (name.includes('.') ? name.split('.').pop() ?? '' : '').toUpperCase()
@@ -264,18 +267,18 @@ function FileTile({
           sensitive={sensitive}
           onClick={recordView}
           title="Открыть изображение в полном размере"
-          className="block overflow-hidden rounded-xl border border-gray-200 transition-colors hover:border-primary-300"
+          className={cn('block rounded-xl border border-gray-200 transition-colors hover:border-primary-300', homeworkCondition ? 'overflow-x-auto' : 'overflow-hidden')}
         >
           <SignedImage
             bucket={bucket}
             path={storagePath}
             sensitive={sensitive}
             alt={fileName || 'Материал темы'}
-            className="max-h-[420px] w-full bg-gray-50 object-contain"
+            className={cn('w-full', homeworkCondition ? 'min-w-[720px] bg-white' : 'max-h-[420px] bg-gray-50 object-contain')}
           />
         </SignedFileLink>
-        <figcaption className="truncate text-xs text-gray-400">
-          {name}{ext && ` · ${ext}`}{formatBytes(sizeBytes) ? ` · ${formatBytes(sizeBytes)}` : ''}
+        <figcaption className="truncate text-xs text-gray-500">
+          {homeworkCondition ? 'Нажмите на условие, чтобы открыть его целиком' : [name, ext, formatBytes(sizeBytes)].filter(Boolean).join(' · ')}
         </figcaption>
       </figure>
     )

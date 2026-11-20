@@ -68,7 +68,7 @@ begin
         where f.attempt_id = old.id and f.photo_task_number = task.number
       )
     ) then
-    raise exception 'Прикрепите фото решения к каждому номеру перед сдачей.';
+    raise exception 'Прикрепите решение к каждому номеру перед сдачей.';
   end if;
   return new;
 end;
@@ -135,13 +135,13 @@ begin
   end if;
   if split_part(new.storage_path, '/', 1) is distinct from attempt.id::text
       or new.mime_type is null
-      or new.mime_type not in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif')
+      or new.mime_type not in ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'application/pdf')
       or not exists (
         select 1 from storage.objects o
         where o.bucket_id = 'topic-homework-attempts' and o.name = new.storage_path
           and o.metadata ->> 'mimetype' = new.mime_type
       ) then
-    raise exception 'Для этого номера загрузите фото решения.';
+    raise exception 'Для этого номера приложите фото или PDF решения.';
   end if;
   return new;
 end;

@@ -35,7 +35,6 @@ import {
   formatBytes,
   formatDue,
   gradeScaleMax,
-  homeworkPhotoMime,
   missingHomeworkPhotoNumbers,
   isOverdue,
   latestReview,
@@ -204,11 +203,7 @@ export function TopicHomeworkStudent({
       // «выбран»: он не попадает ни в прогресс, ни в uploadAttemptFiles;
       // остальные из той же пачки идут как обычно.
       const { accepted, rejected: bad } = splitHomeworkFiles(incoming)
-      const selected = photoTaskNumber ? accepted.filter(file => homeworkPhotoMime(file)) : accepted
-      for (const file of accepted) {
-        if (!selected.includes(file)) bad.push({ file, problem: 'Для этого номера загрузите фото решения.' })
-      }
-      const picked = fromPaste ? selected.map(namePastedFile) : selected
+      const picked = fromPaste ? accepted.map(namePastedFile) : accepted
 
       setRejected(bad)
       setLocalError(null)
@@ -287,7 +282,7 @@ export function TopicHomeworkStudent({
     <>
       {uploadingFiles && (
         <p className="text-sm tabular-nums text-gray-600" role="status">
-          Загрузка фото… {Math.round(uploads.reduce((total, file) => total + file.percent, 0) / uploads.length)}%
+          Загрузка файлов… {Math.round(uploads.reduce((total, file) => total + file.percent, 0) / uploads.length)}%
         </p>
       )}
       {photoMode && (localError || error) && (
@@ -638,7 +633,7 @@ export function TopicHomeworkStudent({
             files={photoFiles}
             selected={selectedNumber}
             condition={selectedWorksheet.length > 0 ? selectedWorksheet.map(material => (
-              <TopicMaterialContent key={material.id} material={material} topicId={topicId} countView={!preview} />
+              <TopicMaterialContent key={material.id} material={material} topicId={topicId} countView={!preview} homeworkCondition />
             )) : taskFile ? (
               <SignedFileLink bucket={TOPIC_HOMEWORK_BUCKET} url={taskFile.storage_path} className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary-700">
                 <FileText size={17} aria-hidden /> Открыть рабочий лист

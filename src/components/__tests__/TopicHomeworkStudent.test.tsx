@@ -680,7 +680,7 @@ describe('ДЗ ученику — файлы не того формата (§173
 })
 
 describe('Домашнее задание с фото по номерам', () => {
-  it('показывает условие выбранного номера и оба способа приложить фото под условием на странице', () => {
+  it('показывает условие выбранного номера и три способа приложить решение под условием на странице', () => {
     homework = { ...hw(), photo_task_numbers: ['14.1', '14.2'] }
     render(<TopicHomeworkStudent topicId={TOPIC} worksheetMaterials={[
       { id: 'm1', kind: 'text', title: 'Задание №14.1', content: 'Условие первого номера', position: 0, isVisible: true, section: 'worksheet_homework' },
@@ -689,7 +689,8 @@ describe('Домашнее задание с фото по номерам', () =
     ]} />)
 
     const first = within(screen.getByRole('article', { name: 'Задание №14.1' }))
-    expect(first.getByText('Условие первого номера')).toBeInTheDocument()
+    expect(first.getByText('Условие первого номера')).toHaveClass('text-lg', 'sm:text-xl')
+    expect(first.getByLabelText('Прикрепить PDF для задания №14.1')).toHaveAttribute('accept', 'application/pdf,.pdf')
     expect(first.getByLabelText('Прикрепить фото для задания №14.1')).toHaveAttribute('multiple')
     expect(first.getByLabelText('Сфотографировать решение для задания №14.1')).toHaveAttribute('capture', 'environment')
     expect(screen.getByText('Остальное условие')).toBeInTheDocument()
@@ -748,7 +749,7 @@ describe('Домашнее задание с фото по номерам', () =
     attempts = [{ ...attempts[0], status: 'submitted' }]
     rerender(<TopicHomeworkStudent topicId={TOPIC} />)
     expect(screen.getByText('Работа сдана')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Задание №2, фото приложено' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Задание №2, решение приложено' }))
     expect(screen.getByRole('article', { name: 'Задание №2' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Прикрепить фото для задания №2')).not.toBeInTheDocument()
   })
@@ -768,16 +769,23 @@ describe('Домашнее задание с фото по номерам', () =
     expect(screen.getByText('Решение не приложено')).toBeInTheDocument()
   })
 
-  it('не создаёт черновик при попытке приложить PDF к заданию с фото', () => {
+  it('сохраняет PDF в черновике выбранного номера', async () => {
     homework = { ...hw(), photo_task_numbers: ['2'] }
-    renderStudent()
-    fireEvent.click(screen.getByRole('button', { name: 'Задание №2' }))
+    const { rerender } = renderStudent()
     const pdf = new File(['solution'], 'solution.pdf', { type: 'application/pdf' })
-    fireEvent.change(screen.getByLabelText('Прикрепить фото для задания №2'), {
+    fireEvent.change(screen.getByLabelText('Прикрепить PDF для задания №2'), {
       target: { files: [pdf] },
     })
-    expect(screen.getByRole('alert')).toHaveTextContent('Для этого номера загрузите фото решения.')
-    expect(startAttempt).not.toHaveBeenCalled()
-    expect(uploadAttemptFiles).not.toHaveBeenCalled()
+    await waitFor(() => expect(uploadAttemptFiles).toHaveBeenCalledWith('att-new', [pdf], expect.any(Function), '2'))
+    expect(submitAttempt).not.toHaveBeenCalled()
+
+    attempts = [{ ...attempt(1, 'draft'), photo_task_numbers: ['2'] }]
+    attemptFiles = [{
+      id: 'pdf-2', attempt_id: 'att-1', storage_path: 'att-1/solution.pdf', file_name: 'solution.pdf',
+      mime_type: 'application/pdf', photo_task_number: '2', size_bytes: 8, position: 0, created_at: '',
+    }]
+    rerender(<TopicHomeworkStudent topicId={TOPIC} />)
+    expect(screen.getByText('1 из 1 номеров')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'solution.pdf' })).toBeInTheDocument()
   })
 })
