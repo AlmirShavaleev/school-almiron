@@ -36,7 +36,7 @@ const lessons = [
 ]
 const homeworkIds = new Set(lessons.map(lesson => lesson.homeworkId))
 const storageMaterials = new Map()
-const migration = await fs.readFile(new URL('../../supabase/migrations/_pending/topic_homework_photos_by_number.sql', import.meta.url), 'utf8')
+const migration = await fs.readFile(new URL('../../supabase/migrations/20261120103324_topic_homework_photos_by_number.sql', import.meta.url), 'utf8')
 const sessions = Object.fromEntries(['student', 'owner'].map(role => [role, makeSession(personas[role].user)]))
 const serviceKey = 'local-demo-service'
 const anonKey = 'local-demo-anon'
