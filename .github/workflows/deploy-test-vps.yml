@@ -1,0 +1,89 @@
+name: Deploy Almiron to test VPS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: almiron-test-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_WEBHOOK_BASE_URL: ${{ vars.VITE_WEBHOOK_BASE_URL }}
+          VITE_ASSETS_BASE_URL: ${{ vars.VITE_ASSETS_BASE_URL }}
+          VITE_BUNNY_CDN_HOST: ${{ vars.VITE_BUNNY_CDN_HOST }}
+          VITE_LANDING_V3: ${{ vars.VITE_LANDING_V3 }}
+
+      - name: Configure SSH and verify VPS host key
+        env:
+          DEPLOY_PRIVATE_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_PRIVATE_KEY"
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -T 10 -t ed25519 45.84.227.23 > "$HOME/.ssh/known_hosts"
+          actual="$(ssh-keygen -lf "$HOME/.ssh/known_hosts" -E sha256 | awk '{print $2}')"
+          test "$actual" = 'SHA256:xDAxPUKVD20TWffiRqL/f5Y5OoHhjKTiF7OvcCZkC00'
+
+      - name: Upload release
+        run: |
+          set -euo pipefail
+          tar -czf site.tar.gz -C dist .
+          ssh -o BatchMode=yes almiron-deploy@45.84.227.23 \
+            "mkdir -p /srv/almiron/releases/$GITHUB_SHA"
+          scp -o BatchMode=yes site.tar.gz \
+            "almiron-deploy@45.84.227.23:/srv/almiron/releases/$GITHUB_SHA/site.tar.gz"
+
+      - name: Activate release atomically
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes almiron-deploy@45.84.227.23 "bash -se -- '$GITHUB_SHA'" <<'REMOTE'
+          set -euo pipefail
+          release="/srv/almiron/releases/$1"
+          tar -xzf "$release/site.tar.gz" -C "$release"
+          rm -f "$release/site.tar.gz"
+          test -s "$release/index.html"
+          test -d "$release/assets"
+
+          # Retain old hashed assets for students with already-open browser tabs.
+          previous="$(readlink -f /srv/almiron/current || true)"
+          if [ -n "$previous" ] && [ -d "$previous/assets" ]; then
+            cp -an "$previous/assets/." "$release/assets/"
+          fi
+
+          find "$release" -type d -exec chmod 755 {} +
+          find "$release" -type f -exec chmod 644 {} +
+
+          ln -s "$release" /srv/almiron/.current-next
+          mv -Tf /srv/almiron/.current-next /srv/almiron/current
+          REMOTE
+
+      - name: Check test site
+        run: |
+          curl --fail --silent --show-error --head --retry 3 --retry-delay 2 \
+            https://test.almiron.ru/
