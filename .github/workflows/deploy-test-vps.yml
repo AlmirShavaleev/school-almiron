@@ -1,6 +1,8 @@
 name: Deploy Almiron to test VPS
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
