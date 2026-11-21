@@ -3,7 +3,7 @@ import { CheckCircle2, ChevronLeft, ChevronRight, BookOpen, Search, X, AlertCirc
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useSectionLocked } from '@/lib/catalogLock'
 import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
-import { useCatalogTopics, useCatalogSections, useCatalogSearch, SUBJECT_SLUGS, useCatalogPhysicsTopicSections, type CatalogViewMode, type CatalogSection } from '@/hooks/useCatalog'
+import { useCatalogTopics, useCatalogSections, useCatalogSearchPreview, SUBJECT_SLUGS, useCatalogPhysicsTopicSections, type CatalogViewMode, type CatalogSection } from '@/hooks/useCatalog'
 import { useAuthStore } from '@/store/authStore'
 import { useCatalogPractice } from '@/hooks/useCatalogPractice'
 import { CatalogNumberProgress } from '@/components/catalog/CatalogNumberProgress'
@@ -32,7 +32,7 @@ export function CatalogSectionPage() {
 
   const [query, setQuery] = useState('')
   const searchEnabled = view === 'exam'
-  const { results: searchResults, loading: searchLoading, error: searchError } = useCatalogSearch(query, sectionId, searchEnabled)
+  const { results: searchResults, loading: searchLoading, error: searchError } = useCatalogSearchPreview(query, sectionId, searchEnabled)
   const isSearching = query.trim().length >= 2
 
   const isStaff = profile && STAFF_ROLES.has(profile.role)
