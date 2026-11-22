@@ -8,6 +8,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 
 let hasPointsColumns = true
 const selects: string[] = []
+const findingsReads: string[][] = []
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
@@ -15,7 +16,7 @@ vi.mock('@/lib/supabase', () => ({
       let columns = ''
       const chain: any = {
         select: (c: string) => { columns = c; if (table === 'topic_homework_ai_jobs') selects.push(c); return chain },
-        in: () => chain,
+        in: (_column: string, ids: string[]) => { if (table === 'topic_homework_ai_findings') findingsReads.push(ids); return chain },
         order: () => chain,
         then: (res: any) => {
           if (table === 'topic_homework_ai_findings') return Promise.resolve({ data: [{ job_id: 'j1' }], error: null }).then(res)
@@ -37,7 +38,7 @@ vi.mock('@/lib/supabase', () => ({
 import { useQueueAiJobs } from '@/hooks/useQueueAiJobs'
 
 describe('useQueueAiJobs — баллы по критериям', () => {
-  beforeEach(() => { selects.length = 0 })
+  beforeEach(() => { selects.length = 0; findingsReads.length = 0 })
 
   it('столбцы есть — сумма и способ оценки в строке', async () => {
     hasPointsColumns = true
@@ -57,4 +58,21 @@ describe('useQueueAiJobs — баллы по критериям', () => {
       'id, attempt_id, status, suggested_score, confidence, accepted_at, created_at',
     ])
   })
+  it('кеширует находки готовой проверки и перечитывает по ручному обновлению', async () => {
+    hasPointsColumns = true
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: string[] }) => useQueueAiJobs(ids),
+      { initialProps: { ids: ['a1'] } },
+    )
+    await waitFor(() => expect(result.current.jobs.a1?.findings).toBe(1))
+    expect(findingsReads).toHaveLength(1)
+
+    rerender({ ids: ['a1', 'a2'] })
+    await waitFor(() => expect(selects).toHaveLength(2))
+    expect(findingsReads).toHaveLength(1)
+
+    await result.current.reload()
+    await waitFor(() => expect(findingsReads).toHaveLength(2))
+  })
+
 })

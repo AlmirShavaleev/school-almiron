@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useMyStudentId } from '@/hooks/useMyTopicHomework'
 import { usePreviewMode } from '@/store/staffModeStore'
-import { attemptsNewestFirst, type TopicHomeworkAttemptRow } from '@/lib/topicHomework'
 
 /**
  * Состояние МОЕЙ работы по теме — словами, для группы «Домашнее задание».
@@ -44,7 +43,8 @@ export function useMyTopicHomeworkState(topicId: string | null) {
     async function load(sid: string | null) {
       const { data: homework } = await supabase
         .from('topic_homework')
-        .select('*')
+        // Для индикатора ДЗ достаточно трёх полей; PDF и прочие данные не нужны.
+        .select('id, is_published, photo_task_numbers')
         .eq('topic_id', topicId!)
         .maybeSingle()
 
@@ -58,12 +58,16 @@ export function useMyTopicHomeworkState(topicId: string | null) {
 
       const { data: attempts } = await supabase
         .from('topic_homework_attempts')
-        .select('*')
+        // Статус определяется только последней попыткой. Не выгружаем всю
+        // историю (и тяжёлые поля каждой попытки) при каждом открытии урока.
+        .select('attempt_number, status, photo_task_numbers')
         .eq('homework_id', homework.id)
         .eq('student_id', sid)
+        .order('attempt_number', { ascending: false })
+        .limit(1)
 
       if (cancelled) return
-      const latest = attemptsNewestFirst((attempts ?? []) as TopicHomeworkAttemptRow[])[0]
+      const latest = attempts?.[0]
       setHasPhotoSubmission(requiresPhotos || !!latest?.photo_task_numbers?.length)
 
       setState(

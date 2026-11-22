@@ -7,7 +7,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
  */
 
 const calls: Array<{ table: string; op: string; args: unknown[] }> = []
-const state = { failWrite: false }
+const state = { failWrite: false, role: 'teacher' }
 
 function builder(table: string, data: unknown) {
   const b: any = {}
@@ -40,13 +40,13 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 vi.mock('@/store/authStore', () => ({
-  useAuthStore: (sel: (s: unknown) => unknown) => sel({ profile: { id: 'teacher-1' } }),
+  useAuthStore: (sel: (s: unknown) => unknown) => sel({ profile: { id: 'teacher-1', role: state.role } }),
 }))
 
 import { useTopicTraining } from '@/hooks/useTopicTraining'
 
 describe('useTopicTraining (§234)', () => {
-  beforeEach(() => { calls.length = 0; state.failWrite = false })
+  beforeEach(() => { calls.length = 0; state.failWrite = false; state.role = 'teacher' })
 
   it('читает дорожку training своей темы и скрытия этой темы', async () => {
     const { result } = renderHook(() => useTopicTraining('t1'))
@@ -80,4 +80,12 @@ describe('useTopicTraining (§234)', () => {
     })
     expect(result.current.subtopics.find(s => s.code === '1.17')?.hidden).toBe(false)
   })
+  it('ученик не читает отдельную таблицу скрытых подтем: фильтрацию делает RLS', async () => {
+    state.role = 'student'
+    const { result } = renderHook(() => useTopicTraining('t1'))
+    await waitFor(() => expect(result.current.subtopics).toHaveLength(2))
+    expect(calls.some(call => call.table === 'topic_material_items' && call.op === 'select')).toBe(true)
+    expect(calls.some(call => call.table === 'topic_subtopic_hidden')).toBe(false)
+  })
+
 })
