@@ -22,7 +22,7 @@ import { TopicHomeworkEditor } from '@/components/courseProgram/TopicHomeworkEdi
 import { TopicTestEditor } from '@/components/courseProgram/TopicTestEditor'
 import { TopicTemplateBanner } from '@/components/courseProgram/TopicTemplateBanner'
 import { TopicAutocheckEditor } from '@/components/courseProgram/TopicAutocheckEditor'
-import { LESSON_FORMAT_HINT, LESSON_FORMAT_LABEL, normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
+import { LESSON_FORMAT_HINT, LESSON_FORMAT_LABEL, hasAutocheckHomework, normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import { TOPIC_KINDS, TOPIC_KIND_HINT, TOPIC_KIND_LABEL, isTimedKind, normalizeTopicKind, type TopicKind } from '@/lib/timedWork'
 import {
   MATERIAL_FILE_ACCEPT, isMaterialSection,
@@ -840,11 +840,11 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
   // ответы и критерии (решение владельца 28.09): остальное на работе по времени
   // лишнее. Время, публикация и оценка — блоком «Время и сдача» под плитками,
   // а не отдельной плиткой.
-  // В тренировке задач с автопроверкой их редактор остаётся под плитками.
+  // Редактор задач с автопроверкой остаётся под плитками.
   // У прикреплённого ДЗ с рабочим листом есть отдельная плитка сдачи фото.
-  const training = !timed && formatVal === 'training'
+  const autocheckHomework = !timed && hasAutocheckHomework(formatVal, homework?.autocheck)
   const TILES = (timed ? TIMED_TILE_ORDER : TOPIC_SECTION_ORDER).filter(isTopicSectionVisible)
-    .filter(key => !(training && key === 'homework' && (!homework?.photo_task_numbers || homework.autocheck))).map(key => ({
+    .filter(key => !(autocheckHomework && key === 'homework' && (!homework?.photo_task_numbers || homework.autocheck))).map(key => ({
     key,
     label: sectionLabel(key, timed),
     icon: TILE_ICON[key],
@@ -1216,8 +1216,7 @@ export function TopicMaterialsModal({ open, onClose, topicId, topicTitle, module
               </div>
             )}
 
-            {/* §266. Тренировочный урок: задачи с автопроверкой и результаты класса. */}
-            {training && topicId && <TopicAutocheckEditor topicId={topicId} canEdit={canEdit} />}
+            {autocheckHomework && topicId && <TopicAutocheckEditor topicId={topicId} canEdit={canEdit} />}
 
             {/* §234. Тренировка — подтемы задачника и переключатель «видят /
                 скрыта» для этого класса. Файлы кладёт загрузчик в шаблон,

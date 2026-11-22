@@ -9,6 +9,7 @@ import {
 import { useStudentCourseProgram, type TopicProgress, type ModuleProgress } from '@/hooks/useStudentCourseProgram'
 import { TopicKindMark } from '@/components/courseProgram/TopicKindMark'
 import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
+import { hasAutocheckHomework } from '@/lib/autocheck'
 
 import { usePreviewMode } from '@/store/staffModeStore'
 
@@ -280,9 +281,7 @@ export interface Signal { label: string; cls: string; icon: React.ReactNode }
  */
 function homeworkSignal(topic: TopicProgress): Signal | null {
   if (!topic.hw_id) return null
-  // §266. У тренировочного урока ДЗ — задачи с автопроверкой: «сдать» там нечего,
-  // их решают в уроке, оценку ставит сайт.
-  if (topic.lesson_format === 'training') {
+  if (hasAutocheckHomework(topic.lesson_format, topic.hw_autocheck)) {
     return topic.hw_status === 'accepted'
       ? { label: topic.hw_score != null ? `Задачи: ${topic.hw_score}/100` : 'Задачи решены', cls: LIST_STATE.accepted.statusCls, icon: <CheckCircle size={10} /> }
       : { label: 'Задачи с автопроверкой', cls: LIST_STATE.not_started.statusCls, icon: <ListChecks size={10} /> }

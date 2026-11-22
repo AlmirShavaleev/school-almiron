@@ -33,6 +33,11 @@ describe('подробная карточка урока', () => {
     expect(screen.getByText('Повторить урок')).toBeInTheDocument()
     expect(screen.getByTestId('lesson-status')).toHaveTextContent('ДЗ принято')
   })
+  it('показывает плашку «Формат ЕГЭ» и задачи с автопроверкой в одной карточке', () => {
+    show({ state: 'hw', pill: 'открыт' }, { lesson_format: 'ege', hw_autocheck: true })
+    expect(screen.getByTestId('lesson-format-mark')).toHaveTextContent('Формат ЕГЭ')
+    expect(screen.getByTestId('lesson-homework')).toHaveTextContent('Задачи с автопроверкой')
+  })
   it('без ДЗ нет срока или выдуманных материалов', () => {
     show({ state: 'nohw', pill: 'открыт · без ДЗ' }, { hw_id: null, sections: new Set(), tasks_total: 0 })
     expect(screen.queryByTestId('lesson-resources')).toBeNull()

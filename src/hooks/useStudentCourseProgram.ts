@@ -112,6 +112,7 @@ export interface TopicProgress {
   sections:       Set<TopicSection>
   // ── ДЗ темы (topic_homework) ──
   hw_id:           string | null
+  hw_autocheck?:   boolean
   hw_title:        string | null
   hw_instructions: string | null
   hw_due_at:       string | null
@@ -316,13 +317,13 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
           // не меняет — неопубликованное к нему и так не приходит.
           const base = supabase
             .from('topic_homework')
-            .select('id, topic_id, title, instructions, due_at, grade_scale')
+            .select('id, topic_id, title, instructions, due_at, grade_scale, autocheck')
             .in('topic_id', topicIds)
           const { data, error } = await (preview ? base.eq('is_published', true) : base)
           if (error) throw new Error(error.message ?? 'Не удалось загрузить домашние задания')
           return (data || []) as unknown as {
             id: string; topic_id: string; title: string; instructions: string | null
-            due_at: string | null; grade_scale: GradeScale | null
+            due_at: string | null; grade_scale: GradeScale | null; autocheck: boolean
           }[]
         })(),
         (async () => {
@@ -478,6 +479,7 @@ export function useStudentCourseProgram(targetGroupId?: string | null) {
               video_thumb:    videoThumbs.get(t.id) ?? null,
               sections,
               hw_id:           hw?.id ?? null,
+              hw_autocheck:    hw?.autocheck === true,
               hw_title:        hw?.title ?? null,
               hw_instructions: hw?.instructions ?? null,
               hw_due_at:       hw?.due_at ?? null,

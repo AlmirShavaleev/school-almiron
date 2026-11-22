@@ -12,7 +12,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 const TOPIC = 'f0000000-0000-0000-0000-000000000266'
 const GROUP = 'g0000000-0000-0000-0000-000000000266'
 
-const lesson = { format: 'training' as string | null }
+const lesson = { format: 'training' as string | null, autocheck: false }
 const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = []
 
 function task(id: string, n: number, over: Record<string, unknown> = {}) {
@@ -57,8 +57,7 @@ vi.mock('@/lib/supabase', () => ({
         modules: { id: 'mod-1', title: 'Кинематика', courses: { id: 'c1', title: 'Физика', subject: 'physics' } },
       })
       if (table === 'groups') return chain({ id: GROUP, name: '10А' })
-      // ДЗ-носитель есть: счёт ДЗ темы = 1.
-      if (table === 'topic_homework') return chain(null, 1)
+      if (table === 'topic_homework') return chain([{ id: 'hw1', autocheck: lesson.autocheck }], 1)
       return chain(null, 0)
     },
     rpc: (fn: string, args: Record<string, unknown>) => {
@@ -112,6 +111,7 @@ function renderPage() {
 describe('Тренировочный урок (§266)', () => {
   beforeEach(() => {
     lesson.format = 'training'
+    lesson.autocheck = false
     rpcCalls.length = 0
   })
 
@@ -130,7 +130,9 @@ describe('Тренировочный урок (§266)', () => {
     expect(screen.queryByTestId('hw-upload')).toBeNull()
   })
 
-  it('открытая задача: «Введите число» без запроса; верный ответ — вердикт, решение, оценка', async () => {
+  it.each(['training', 'ege'])('формат %s: проверка ответа, оценка и показ решения после ответа', async format => {
+    lesson.format = format
+    lesson.autocheck = format === 'ege'
     renderPage()
     fireEvent.click(await screen.findByTestId('topic-seg-homework'))
     const block = await screen.findByTestId('autocheck-block')

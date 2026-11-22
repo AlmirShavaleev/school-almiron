@@ -33,6 +33,12 @@ describe('lessonChips', () => {
   it('тренировочный урок: «ДЗ с автопроверкой»', () => {
     expect(lessonChips(topic({ hw_id: 'hw', lesson_format: 'training' })).map(c => c.label)).toEqual(['ДЗ с автопроверкой'])
   })
+
+  it('формат ЕГЭ: подпись и результат ДЗ с автопроверкой', () => {
+    const examLesson = topic({ hw_id: 'hw', lesson_format: 'ege', hw_autocheck: true, hw_status: 'accepted', hw_score: 85 })
+    expect(lessonChips(examLesson).map(c => c.label)).toEqual(['ДЗ с автопроверкой'])
+    expect(lessonStatus(examLesson, TODAY)?.label).toBe('Задачи решены · 85/100')
+  })
 })
 
 describe('lessonStatus', () => {

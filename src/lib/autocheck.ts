@@ -24,11 +24,16 @@ export const LESSON_FORMAT_LABEL: Record<LessonFormat, string> = {
 
 export const LESSON_FORMAT_HINT: Record<LessonFormat, string> = {
   training: 'Подтема: видео, задачи урока, рабочий лист, решения и задачи с автопроверкой вместо ДЗ на проверку',
-  ege: 'Задания по номеру ЕГЭ и обычное ДЗ, которое проверяет учитель',
+  ege: 'Задачи в формате ЕГЭ. Если у урока есть ДЗ с автопроверкой, оно доступно ученику.',
 }
 
 export function normalizeLessonFormat(value: unknown): LessonFormat | null {
   return value === 'training' || value === 'ege' ? value : null
+}
+
+/** Тренировочный формат также позволяет подготовить первое ДЗ с автопроверкой. */
+export function hasAutocheckHomework(lessonFormat?: string | null, homeworkAutocheck?: boolean): boolean {
+  return homeworkAutocheck === true || lessonFormat === 'training'
 }
 
 /** Попыток на задачу — то же число, что CHECK в базе. */
