@@ -4,7 +4,6 @@ import {
   ArrowLeft, Clock, ExternalLink,
   Loader2, Lock, Play, AlertCircle,
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePreviewMode } from '@/store/staffModeStore'
 import { isTopicOpen, willOpenByDate } from '@/lib/topicAvailability'
@@ -50,7 +49,7 @@ import { useCourseTopicLocks } from '@/hooks/useCourseTopicLocks'
 import { progressNote } from '@/lib/progressUnlock'
 import { readPagePosition, savePagePosition, takeScrollPosition } from '@/lib/pagePosition'
 import { noteNav } from '@/lib/perf/rum'
-import { ownStudentRow } from '@/lib/ownStudent'
+import { fetchStudentTopicShell } from '@/lib/studentTopicShell'
 import { LessonNavigation } from '@/components/student/course/LessonNavigation'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -200,32 +199,15 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     async function load() {
       setLoading(true)
       try {
-        // 1. Student record (страница ученика: без записи students темы нет).
-        // В предпросмотре её и не ищем — тему персоналу отдаёт RLS.
-        if (!preview) {
-          const { data: student } = await ownStudentRow(profile!.id)
-          if (!student || cancelled) return
-        }
-
-        // 2. Topic + group info + homework + test (parallel)
-        const [topicRes, groupRes, hwRes, testRes] = await Promise.all([
-          // `*`, а не перечень: §240 добавил `kind`, и до применения миграции
-          // явный столбец уронил бы всю страницу темы.
-          supabase.from('topics')
-            .select('*, modules(id, title, courses(id, title, subject))')
-            .eq('id', topicId!).single(),
-          supabase.from('groups')
-            .select('id, name').eq('id', groupId!).single(),
-          // §250. В предпросмотре черновик ДЗ не считается: ученику он не виден.
-          preview
-            ? supabase.from('topic_homework').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!).eq('is_published', true)
-            : supabase.from('topic_homework').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
-          supabase.from('topic_test_assignments').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
-        ])
-        if (cancelled) return
-
-        const td: any = topicRes.data
-        const gd: any = groupRes.data
+        const shell = await fetchStudentTopicShell({
+          topicId: topicId!,
+          groupId: groupId!,
+          profileId: profile!.id,
+          preview,
+        })
+        if (cancelled || !shell) return
+        const td: any = shell.topic
+        const gd: any = shell.group
         if (!td) return
 
         setTopic({
@@ -243,8 +225,8 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           kind:           normalizeTopicKind(td.kind),
           lesson_format:  normalizeLessonFormat(td.lesson_format),
         })
-        setHasHomework((hwRes.count ?? 0) > 0)
-        setHasTest((testRes.count ?? 0) > 0)
+        setHasHomework(shell.hasHomework)
+        setHasTest(shell.hasTest)
       } finally {
         if (!cancelled) setLoading(false)
       }
