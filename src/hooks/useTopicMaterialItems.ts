@@ -31,6 +31,11 @@ import { onlyEgeTrack } from '@/lib/training'
  * загрузку. Ответ живёт секунды: это склейка одновременных запросов, а не кэш;
  * `reload()` его сбрасывает.
  */
+// Только поля, реально используемые toTopicMaterial. Длинное содержимое
+// теории остаётся: оно нужно для отображения без дополнительного запроса.
+export const TOPIC_MATERIAL_READ_COLUMNS =
+  'id, topic_id, kind, title, content, url, storage_path, file_name, size_bytes, position, is_visible, section, source_item_id'
+
 const SHARE_MS = 3_000
 const inflight = new Map<string, { at: number; value: Promise<{ data: unknown[] | null; error: { message: string } | null }> }>()
 
@@ -45,7 +50,7 @@ function fetchTopicMaterials(topicId: string, fresh: boolean) {
   // рубрик и в «тема пройдена» на клиенте.
   const value = Promise.resolve(onlyEgeTrack(supabase
     .from('topic_material_items')
-    .select('*')
+    .select(TOPIC_MATERIAL_READ_COLUMNS)
     .eq('topic_id', topicId))
     .order('position', { ascending: true })
     .order('created_at', { ascending: true }))
