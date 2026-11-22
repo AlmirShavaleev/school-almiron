@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const calls: string[] = []
-let resolveStudent: ((value: { data: { id: string } | null }) => void) | null = null
+const studentGate: { resolve: ((value: { data: { id: string } | null }) => void) | null } = { resolve: null }
 
 vi.mock('@/lib/ownStudent', () => ({
   ownStudentRow: () => {
     calls.push('students')
-    return new Promise<{ data: { id: string } | null }>(resolve => { resolveStudent = resolve })
+    return new Promise<{ data: { id: string } | null }>(resolve => { studentGate.resolve = resolve })
   },
 }))
 
@@ -41,12 +41,12 @@ const params = {
 }
 
 describe('fetchStudentTopicShell', () => {
-  beforeEach(() => { calls.length = 0; resolveStudent = null })
+  beforeEach(() => { calls.length = 0; studentGate.resolve = null })
 
   it('начинает все независимые запросы до ответа students и не отдаёт данные до проверки', async () => {
     const resultPromise = fetchStudentTopicShell(params)
     expect(calls).toEqual(['students', 'topics', 'groups', 'topic_homework', 'topic_test_assignments'])
-    resolveStudent?.({ data: { id: 'student-1' } })
+    studentGate.resolve?.({ data: { id: 'student-1' } })
     const shell = await resultPromise
     expect(shell?.topic).toMatchObject({ id: 'topic-1' })
     expect(shell?.hasHomework).toBe(true)
