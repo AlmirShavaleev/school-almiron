@@ -122,41 +122,40 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       }
 
       const ids = rows.map(a => a.id)
-      const [afRes, revRes] = await Promise.all([
+      // Имена других учеников нужны только персоналу курса. У ученика
+      // RLS уже оставляет собственные попытки, и отображать своё имя здесь
+      // не требуется — отдельный запрос students был лишним.
+      const studentIds = profile?.role === 'student'
+        ? []
+        : Array.from(new Set(rows.map(a => a.student_id)))
+
+      // Все три чтения независимы: раньше персонал ждал файлы и вердикты,
+      // прежде чем запросить имена, добавляя ещё один RTT.
+      const [afRes, revRes, namesRes] = await Promise.all([
         supabase.from('topic_homework_attempt_files').select('*').in('attempt_id', ids).order('position'),
         supabase.from('topic_homework_reviews').select('*').in('attempt_id', ids).order('created_at'),
+        studentIds.length > 0
+          ? supabase.from('students')
+            .select('id, profile_id, profiles!inner(full_name)')
+            .in('id', studentIds)
+          : Promise.resolve({ data: [] }),
       ])
       if (cancelled) return
 
       setAttemptFiles((afRes.data ?? []) as TopicHomeworkAttemptFileRow[])
       setReviews((revRes.data ?? []) as TopicHomeworkReviewRow[])
-
-      // Имена нужны только преподавателю: ученик видит в выдаче лишь себя.
-      // Отдельным запросом, потому что RLS students/profiles живёт своими
-      // правилами и join через PostgREST здесь только мешает.
-      const studentIds = Array.from(new Set(rows.map(a => a.student_id)))
-      if (studentIds.length > 0) {
-        const { data: studentRows } = await supabase
-          .from('students')
-          .select('id, profile_id, profiles!inner(full_name)')
-          .in('id', studentIds)
-        if (!cancelled) {
-          const map: Record<string, string> = {}
-          for (const s of (studentRows ?? []) as any[]) {
-            map[s.id] = s.profiles?.full_name ?? 'Ученик'
-          }
-          setStudentNames(map)
-        }
-      } else {
-        setStudentNames({})
+      const names: Record<string, string> = {}
+      for (const student of (namesRes.data ?? []) as any[]) {
+        names[student.id] = student.profiles?.full_name ?? 'Ученик'
       }
+      setStudentNames(names)
 
       setLoading(false)
     }
 
     load()
     return () => { cancelled = true }
-  }, [topicId, tick, preview, applyHomework, applyFiles])
+  }, [topicId, tick, preview, profile?.role, applyHomework, applyFiles])
 
   // ── преподаватель ──────────────────────────────────────────
 
