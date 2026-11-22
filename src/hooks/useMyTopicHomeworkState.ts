@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useMyStudentId } from '@/hooks/useMyTopicHomework'
 import { usePreviewMode } from '@/store/staffModeStore'
-import { attemptsNewestFirst, type TopicHomeworkAttemptRow } from '@/lib/topicHomework'
 
 /**
  * Состояние МОЕЙ работы по теме — словами, для группы «Домашнее задание».
@@ -68,7 +67,7 @@ export function useMyTopicHomeworkState(topicId: string | null) {
         .limit(1)
 
       if (cancelled) return
-      const latest = attemptsNewestFirst((attempts ?? []) as TopicHomeworkAttemptRow[])[0]
+      const latest = attempts?.[0]
       setHasPhotoSubmission(requiresPhotos || !!latest?.photo_task_numbers?.length)
 
       setState(
