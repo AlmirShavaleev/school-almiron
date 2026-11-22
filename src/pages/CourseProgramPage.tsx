@@ -405,7 +405,7 @@ function HwTable({
                           </span>
                         </button>
                         <TopicKindMark kind={topic.kind} />
-                        <LessonFormatMark format={topic.lesson_format} kind={topic.kind} />
+                        <LessonFormatMark format={topic.lesson_format} title={topic.title} kind={topic.kind} />
                         <TopicOpenToggle topic={topic} onToggle={v => onToggleTopicOpen(topic.id, v)} />
                         <TopicHomeworkBadge rows={homeworkStateByTopic[topic.id] ?? []} />
                         {hw && (
@@ -504,7 +504,7 @@ function TopicRowEdit({
                 />
               </div>
               <TopicKindMark kind={topic.kind} />
-              <LessonFormatMark format={topic.lesson_format} kind={topic.kind} />
+              <LessonFormatMark format={topic.lesson_format} title={topic.title} kind={topic.kind} />
               <TopicOpenToggle topic={topic} onToggle={v => onSave(topic.id, { is_open: v })} />
               <TopicHomeworkBadge rows={homeworkRows} />
             </div>

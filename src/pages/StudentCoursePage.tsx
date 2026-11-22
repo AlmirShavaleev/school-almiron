@@ -173,7 +173,7 @@ function WorkItem({ topic, work, view, onOpen }: { topic: TopicProgress; work: A
         <p className={cn('text-sm font-semibold leading-snug', isLocked ? 'text-gray-400' : 'text-gray-800')}>
           {isLocked && <Lock size={10} className="mb-0.5 mr-1 inline text-gray-300" aria-hidden />}
           <TopicKindMark kind={topic.kind} className="mr-1.5" />
-          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} className="mr-1.5" />
+          <LessonFormatMark format={topic.lesson_format} title={topic.title} kind={topic.kind} className="mr-1.5" />
           {topic.title}
         </p>
         {when && <p className="mt-1 text-xs tabular-nums text-gray-600" data-testid="works-module-when">{when}</p>}

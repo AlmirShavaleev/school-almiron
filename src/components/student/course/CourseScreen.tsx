@@ -278,9 +278,7 @@ export function LessonTiles({ lessons, hrefFor }: {
               <span className="stu-lesson-badge" data-testid="lesson-status">{lessonBadge(l.tile, l.details)}</span>
             </span>
             <span className="stu-lesson-title">{l.title}</span>
-            {l.details?.lesson_format === 'ege' && (
-              <LessonFormatMark format={l.details.lesson_format} kind={l.details.kind} className="self-start" />
-            )}
+            <LessonFormatMark format={l.details?.lesson_format} title={l.title} kind={l.details?.kind} onlyFormat="ege" className="self-start" />
             {resources.length > 0 && (
               <span className="stu-lesson-resources" data-testid="lesson-resources">
                 {resources.map(({ label, icon: Icon }) => <span key={label}><Icon size={16} aria-hidden />{label}</span>)}

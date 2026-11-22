@@ -1,4 +1,4 @@
-import { LESSON_FORMAT_LABEL, normalizeLessonFormat } from '@/lib/autocheck'
+import { LESSON_FORMAT_LABEL, normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import { cn } from '@/utils/cn'
 
 /**
@@ -7,9 +7,20 @@ import { cn } from '@/utils/cn'
  * до §266) — без метки: сорок одинаковых «Урок» в списке были бы шумом (как
  * у `TopicKindMark`). У проверочной и контрольной пометки нет — у них своя.
  */
-export function LessonFormatMark({ format, kind, className }: { format: unknown; kind?: unknown; className?: string }) {
-  const f = normalizeLessonFormat(format)
-  if (!f) return null
+export function LessonFormatMark({ format, title, kind, onlyFormat, className }: {
+  format: unknown
+  title?: string
+  kind?: unknown
+  onlyFormat?: LessonFormat
+  className?: string
+}) {
+  const savedFormat = normalizeLessonFormat(format)
+  // Архив первой части уже помечен в оглавлении. Учитываем эту пометку
+  // до переноса формата в отдельное поле, которое читает и рабочий сайт.
+  const f = savedFormat === 'training' && title?.startsWith('Формат ЕГЭ, часть 1 · ')
+    ? 'ege'
+    : savedFormat
+  if (!f || (onlyFormat && f !== onlyFormat)) return null
   if (kind === 'check' || kind === 'control') return null
   return (
     <span
