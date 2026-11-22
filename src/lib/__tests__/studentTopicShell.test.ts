@@ -55,7 +55,7 @@ describe('fetchStudentTopicShell', () => {
 
   it('без записи ученика не отдаёт данные оболочки', async () => {
     const resultPromise = fetchStudentTopicShell(params)
-    resolveStudent?.({ data: null })
+    studentGate.resolve?.({ data: null })
     expect(await resultPromise).toBeNull()
   })
 
