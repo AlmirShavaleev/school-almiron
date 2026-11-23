@@ -9,6 +9,7 @@
  * до сдачи ДЗ разбор закрыт (`GATED_SECTION`), а обещание «решение есть»
  * подталкивает списать.
  */
+import { hasAutocheckHomework } from './autocheck'
 import { parseBunnyVideoUrl } from './bunnyVideoUrl'
 import { dueDateKey } from './homeworkDeadline'
 import { isTopicOpen, willOpenByDate, type TopicOpenState } from './topicAvailability'
@@ -97,6 +98,7 @@ export interface LessonCardTopic extends TopicOpenState {
   sections: Set<TopicSection>
   lesson_format?: string | null
   hw_id: string | null
+  hw_autocheck?: boolean
   hw_due_at: string | null
   hw_status: TopicHwStatus | null
   hw_score: number | null
@@ -116,8 +118,7 @@ export function lessonChips(topic: LessonCardTopic): LessonChip[] {
   if (theory || notes) chips.push({ key: 'theory', label: theory && notes ? 'Теория и конспект' : theory ? 'Теория' : 'Конспект' })
   if (topic.tasks_total > 0) chips.push({ key: 'tasks', label: `Задачи · ${topic.tasks_total}` })
   else if (s.has('tasks') || s.has('worksheet_tasks')) chips.push({ key: 'tasks', label: 'Задачи' })
-  // §266. У тренировочного урока ДЗ — задачи с автопроверкой.
-  if (topic.hw_id) chips.push({ key: 'homework', label: topic.lesson_format === 'training' ? 'ДЗ с автопроверкой' : 'ДЗ' })
+  if (topic.hw_id) chips.push({ key: 'homework', label: hasAutocheckHomework(topic.lesson_format, topic.hw_autocheck) ? 'ДЗ с автопроверкой' : 'ДЗ' })
   if (topic.test_assignment_id) chips.push({ key: 'test', label: 'Тест' })
   return chips
 }
@@ -144,7 +145,7 @@ export function lessonStatus(topic: LessonCardTopic, today: string, openToday?: 
     return { label: day ? `Откроется ${dayMonthShort(day)}` : 'Откроется позже', tone: 'locked' }
   }
   if (topic.hw_id) {
-    const training = topic.lesson_format === 'training'
+    const training = hasAutocheckHomework(topic.lesson_format, topic.hw_autocheck)
     switch (topic.hw_status) {
       case 'accepted':
         if (training) return { label: topic.hw_score != null ? `Задачи решены · ${topic.hw_score}/100` : 'Задачи решены', tone: 'done' }

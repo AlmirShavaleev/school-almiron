@@ -391,7 +391,7 @@ function TeacherTopicRow({ topic, index, stats, canEdit, opening, onOpen, onOpen
         <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-graphite-500">
           Урок {index + 1}
           <TopicKindMark kind={topic.kind} />
-          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} />
+          <LessonFormatMark format={topic.lesson_format} title={topic.title} kind={topic.kind} />
         </span>
         <div className={cn('line-clamp-3 break-words text-[15px] font-extrabold leading-snug sm:text-[17px]', open ? 'text-graphite-950 group-hover:text-primary-700' : 'text-graphite-500')}>
           {!open && <Lock size={12} className="mb-0.5 mr-1 inline text-graphite-400" aria-hidden />}

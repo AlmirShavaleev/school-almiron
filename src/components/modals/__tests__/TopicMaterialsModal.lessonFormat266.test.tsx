@@ -32,6 +32,7 @@ const RESULTS = {
   ],
 }
 const deleteError = { message: null as string | null }
+const homework = { autocheck: false }
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
@@ -55,7 +56,7 @@ vi.mock('@/hooks/useTopicTest', () => ({
   useTestBank: () => ({ tests: [], loading: false }),
 }))
 vi.mock('@/hooks/useTopicHomework', () => ({
-  useTopicHomework: () => ({ homework: null, files: [], loading: false, error: null }),
+  useTopicHomework: () => ({ homework: homework.autocheck ? { autocheck: true } : null, files: [], loading: false, error: null }),
 }))
 vi.mock('@/components/courseProgram/TopicHomeworkEditor', () => ({ TopicHomeworkEditor: () => <div data-testid="hw-editor" /> }))
 vi.mock('@/components/courseProgram/TopicTemplateBanner', () => ({ TopicTemplateBanner: () => null }))
@@ -82,6 +83,7 @@ describe('Пометка урока и задачи с автопроверко�
     useAuthStore.setState({ profile: { id: 'u1', role: 'teacher' } as any })
     rpcCalls.length = 0
     deleteError.message = null
+    homework.autocheck = false
   })
 
   it('по умолчанию «Без пометки», есть плитка ДЗ; «Тренировочный» сохраняется и меняет окно', async () => {
@@ -102,6 +104,19 @@ describe('Пометка урока и задачи с автопроверко�
     renderModal({ onSaveTopicMeta, lessonFormat: 'ege' })
     await act(async () => { fireEvent.click(screen.getByTestId('lesson-format-training')) })
     expect(screen.getByTestId('lesson-format-ege')).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('переключение на «Формат ЕГЭ» оставляет редактор ДЗ с автопроверкой', async () => {
+    homework.autocheck = true
+    const { onSaveTopicMeta } = renderModal({ lessonFormat: 'training' })
+    expect(await screen.findByTestId('autocheck-editor')).toBeInTheDocument()
+
+    await act(async () => { fireEvent.click(screen.getByTestId('lesson-format-ege')) })
+
+    expect(onSaveTopicMeta).toHaveBeenCalledWith({ lesson_format: 'ege' })
+    expect(screen.getByTestId('lesson-format-ege')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('autocheck-editor')).toBeInTheDocument()
+    expect(screen.queryByTestId('topic-tile-homework')).toBeNull()
   })
 
   it('у проверочной пометки урока нет', () => {

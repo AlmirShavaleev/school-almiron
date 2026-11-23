@@ -10,8 +10,8 @@ const details = {
   hw_due_at: '2020-01-01T12:00:00Z', hw_score: null, hw_max: null,
   tasks_total: 7, tasks_closed: 2, lesson_format: null,
 } as Pick<TopicProgress, 'sections' | 'hw_id' | 'hw_status' | 'hw_due_at' | 'hw_score' | 'hw_max' | 'tasks_total' | 'tasks_closed' | 'lesson_format'>
-function show(tile: LessonTile, extra = {}) {
-  render(<MemoryRouter><LessonTiles lessons={[{ id: 'lesson', title: 'Производная', tile, details: { ...details, ...extra } }]} hrefFor={id => `/lesson/${id}`} /></MemoryRouter>)
+function show(tile: LessonTile, extra = {}, title = 'Производная') {
+  render(<MemoryRouter><LessonTiles lessons={[{ id: 'lesson', title, tile, details: { ...details, ...extra } }]} hrefFor={id => `/lesson/${id}`} /></MemoryRouter>)
 }
 describe('подробная карточка урока', () => {
   it('показывает только имеющиеся материалы, задачи, срок и переход', () => {
@@ -32,6 +32,16 @@ describe('подробная карточка урока', () => {
     expect(screen.getByText('Результат: 18 из 20 баллов')).toBeInTheDocument()
     expect(screen.getByText('Повторить урок')).toBeInTheDocument()
     expect(screen.getByTestId('lesson-status')).toHaveTextContent('ДЗ принято')
+  })
+  it('показывает плашку «Формат ЕГЭ» и задачи с автопроверкой в одной карточке', () => {
+    show({ state: 'hw', pill: 'открыт' }, { lesson_format: 'ege', hw_autocheck: true })
+    expect(screen.getByTestId('lesson-format-mark')).toHaveTextContent('Формат ЕГЭ')
+    expect(screen.getByTestId('lesson-homework')).toHaveTextContent('Задачи с автопроверкой')
+  })
+  it('показывает плашку у отмеченного архивного занятия до обновления поля формата', () => {
+    show({ state: 'hw', pill: 'открыт' }, { lesson_format: 'training', hw_autocheck: true }, 'Формат ЕГЭ, часть 1 · Движение по окружности')
+    expect(screen.getByTestId('lesson-format-mark')).toHaveAttribute('data-format', 'ege')
+    expect(screen.getByTestId('lesson-homework')).toHaveTextContent('Задачи с автопроверкой')
   })
   it('без ДЗ нет срока или выдуманных материалов', () => {
     show({ state: 'nohw', pill: 'открыт · без ДЗ' }, { hw_id: null, sections: new Set(), tasks_total: 0 })

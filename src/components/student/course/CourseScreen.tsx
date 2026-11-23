@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, BookOpen, ClipboardCheck, FileText, Lock, Play, ListChecks } from 'lucide-react'
 import { SUBJECT_LABELS, EXAM_LABELS } from '@/utils/format'
 import { plural } from '@/lib/plural'
+import { hasAutocheckHomework } from '@/lib/autocheck'
+import { LessonFormatMark } from '@/components/courseProgram/LessonFormatMark'
 import { Sticker } from '@/components/student/skin/Sticker'
 import type { StickerName } from '@/components/student/skin/skin'
 import { DualRing } from '@/components/student/course/DualRing'
@@ -222,7 +224,7 @@ export function SectionHero({ tile, chips, courseTitle, onBack, openLine }: {
 }
 
 /** Detailed lesson cards. Availability and homework state still come from lessonTile. */
-type LessonDetails = Pick<TopicProgress, 'sections' | 'hw_id' | 'hw_status' | 'hw_due_at' | 'hw_score' | 'hw_max' | 'tasks_total' | 'tasks_closed' | 'lesson_format'>
+type LessonDetails = Pick<TopicProgress, 'sections' | 'hw_id' | 'hw_autocheck' | 'hw_status' | 'hw_due_at' | 'hw_score' | 'hw_max' | 'tasks_total' | 'tasks_closed' | 'lesson_format' | 'kind'>
 
 function lessonResources(details?: LessonDetails) {
   const sections = details?.sections
@@ -239,7 +241,7 @@ function lessonResources(details?: LessonDetails) {
 
 function lessonBadge(tile: LessonTile, details?: LessonDetails) {
   if (tile.state === 'locked') return 'Закрыт'
-  if (details?.lesson_format === 'training') return tile.state === 'done' ? 'Задачи решены' : 'Тренировка'
+  if (hasAutocheckHomework(details?.lesson_format, details?.hw_autocheck)) return tile.state === 'done' ? 'Задачи решены' : 'Тренировка'
   if (tile.state === 'done') return 'ДЗ принято'
   if (tile.state === 'review') return 'ДЗ на проверке'
   if (details?.hw_status === 'returned') return 'Нужна доработка'
@@ -265,7 +267,7 @@ export function LessonTiles({ lessons, hrefFor }: {
         const locked = l.tile.state === 'locked'
         const resources = locked ? [] : lessonResources(l.details)
         const hasHomework = !locked && (l.details ? !!l.details.hw_id : ['hw', 'review', 'done'].includes(l.tile.state))
-        const training = l.details?.lesson_format === 'training'
+        const autocheckHomework = hasAutocheckHomework(l.details?.lesson_format, l.details?.hw_autocheck)
         const due = l.details?.hw_due_at
         const dueLabel = !locked && hasHomework && due && Number.isFinite(Date.parse(due))
           ? new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(new Date(due)) : null
@@ -276,6 +278,7 @@ export function LessonTiles({ lessons, hrefFor }: {
               <span className="stu-lesson-badge" data-testid="lesson-status">{lessonBadge(l.tile, l.details)}</span>
             </span>
             <span className="stu-lesson-title">{l.title}</span>
+            <LessonFormatMark format={l.details?.lesson_format} title={l.title} kind={l.details?.kind} onlyFormat="ege" className="self-start" />
             {resources.length > 0 && (
               <span className="stu-lesson-resources" data-testid="lesson-resources">
                 {resources.map(({ label, icon: Icon }) => <span key={label}><Icon size={16} aria-hidden />{label}</span>)}
@@ -288,7 +291,7 @@ export function LessonTiles({ lessons, hrefFor }: {
               <span className="stu-lesson-homework" data-testid="lesson-homework">
                 {locked ? <Lock size={20} aria-hidden /> : <ClipboardCheck size={20} aria-hidden />}
                 <span className="min-w-0 flex-1">
-                  <strong>{locked ? 'Доступ к уроку' : hasHomework ? (training ? 'Задачи с автопроверкой' : 'Домашнее задание') : 'Материалы урока'}</strong>
+                  <strong>{locked ? 'Доступ к уроку' : hasHomework ? (autocheckHomework ? 'Задачи с автопроверкой' : 'Домашнее задание') : 'Материалы урока'}</strong>
                   {dueLabel && <small>Срок: {dueLabel} (МСК)</small>}
                 </span>
                 <span className="stu-lesson-homework-state" data-testid="lesson-tile-pill">{l.tile.pill}</span>

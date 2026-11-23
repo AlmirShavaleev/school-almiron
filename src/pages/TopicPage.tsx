@@ -40,7 +40,8 @@ import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { TopicAutocheckStudent } from '@/components/courseProgram/TopicAutocheckStudent'
 import { useTopicAutocheck } from '@/hooks/useTopicAutocheck'
-import { normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
+import { hasAutocheckHomework, normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
+import type { TopicHomeworkRow } from '@/lib/topicHomework'
 import { TopicRatingBlock } from '@/components/courseProgram/TopicRatingBlock'
 import { TopicFeedbackCard } from '@/components/courseProgram/TopicFeedbackCard'
 import { TopicLessonEvents } from '@/components/student/course/LessonEvents'
@@ -72,6 +73,7 @@ interface TopicInfo {
   kind:           TopicKind
   /** §266. Пометка урока: «Тренировочный» / «Формат ЕГЭ» / нет. */
   lesson_format:  LessonFormat | null
+  hw_autocheck:   boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -207,6 +209,10 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           if (!student || cancelled) return
         }
 
+        // §250. В предпросмотре черновик ДЗ не считается: ученику он не виден.
+        const homeworkQuery = supabase.from('topic_homework')
+          .select('id, autocheck', { count: 'exact' }).eq('topic_id', topicId!)
+
         // 2. Topic + group info + homework + test (parallel)
         const [topicRes, groupRes, hwRes, testRes] = await Promise.all([
           // `*`, а не перечень: §240 добавил `kind`, и до применения миграции
@@ -216,16 +222,14 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
             .eq('id', topicId!).single(),
           supabase.from('groups')
             .select('id, name').eq('id', groupId!).single(),
-          // §250. В предпросмотре черновик ДЗ не считается: ученику он не виден.
-          preview
-            ? supabase.from('topic_homework').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!).eq('is_published', true)
-            : supabase.from('topic_homework').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
+          preview ? homeworkQuery.eq('is_published', true) : homeworkQuery,
           supabase.from('topic_test_assignments').select('id', { count: 'exact', head: true }).eq('topic_id', topicId!),
         ])
         if (cancelled) return
 
         const td: any = topicRes.data
         const gd: any = groupRes.data
+        const homework = hwRes.data as unknown as Pick<TopicHomeworkRow, 'autocheck'>[] | null
         if (!td) return
 
         setTopic({
@@ -242,6 +246,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           group_name:     gd?.name || '',
           kind:           normalizeTopicKind(td.kind),
           lesson_format:  normalizeLessonFormat(td.lesson_format),
+          hw_autocheck:   Array.isArray(homework) && homework.some(hw => hw.autocheck === true),
         })
         setHasHomework((hwRes.count ?? 0) > 0)
         setHasTest((testRes.count ?? 0) > 0)
@@ -277,11 +282,10 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
     if (before === false && timedWindow.opened) reloadMaterials?.()
   }, [timedWindow.loaded, timedWindow.opened, reloadMaterials])
 
-  // §266. Тренировочный урок: вместо ДЗ на проверку — задачи с автопроверкой.
-  // Хук ждёт тему (пометка приходит с ней); в предпросмотре эталоны персонала
-  // сбрасываются «как у нового ученика», проверка не зовётся.
-  const isTraining = !!topic && !isTimedKind(topic.kind) && topic.lesson_format === 'training'
-  const autocheck = useTopicAutocheck(topicId ?? null, { preview, enabled: isTraining })
+  // В предпросмотре эталоны персонала сбрасываются «как у нового ученика».
+  const autocheckHomework = !!topic && topic.id === topicId && !isTimedKind(topic.kind)
+    && hasAutocheckHomework(topic.lesson_format, topic.hw_autocheck)
+  const autocheck = useTopicAutocheck(topicId ?? null, { preview, enabled: autocheckHomework })
 
   // §288. Курс «по прохождению»: замок урока — решение базы; после того как все
   // задачи автопроверки завершены, замки перечитываются — мог открыться следующий.
@@ -446,9 +450,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   }
   if (solutionState.hasSolution || sectionCounts.solution > 0) availableTabs.push('solution')
 
-  // §266. У тренировочного урока вкладка ДЗ — это задачи с автопроверкой (их
-  // носитель — ДЗ урока, но и без него вкладка нужна, раз задачи есть).
-  if (hasHomework || (isTraining && autocheckTotal > 0)) availableTabs.push('homework')
+  if (hasHomework || (autocheckHomework && autocheckTotal > 0)) availableTabs.push('homework')
   // Вкладка нужна и когда теста банка нет, а тестирование выдано.
   // Скрытие рубрики решает один переключатель в перечне (`TOPIC_SECTIONS_HIDDEN`),
   // а не условие по месту: рубрика уже однажды разъезжалась по копиям (§100).
@@ -497,7 +499,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
    *    не «прочитал». Автоматический учёт просмотров (§107) живёт отдельно.
    */
   function renderGroupMark(groupKey: TopicGroupKey) {
-    if (groupKey === 'homework' && isTraining && !hasPhotoSubmission && autocheck.state) {
+    if (groupKey === 'homework' && autocheckHomework && !hasPhotoSubmission && autocheck.state) {
       const st = autocheck.state
       return (
         <span
@@ -674,7 +676,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           // материалы (условие, решение, критерии): перечитываем вкладки.
           onPhaseChange={() => { reloadMaterials?.() }}
         />
-      ) : key === 'homework' && isTraining && !hasPhotoSubmission ? (
+      ) : key === 'homework' && autocheckHomework && !hasPhotoSubmission ? (
         autocheck.state ? (
           <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
         ) : (
@@ -684,7 +686,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         )
       ) : key === 'homework' ? (
         <div className="space-y-4">
-          {isTraining && autocheck.state && autocheckTotal > 0 && (
+          {autocheckHomework && autocheck.state && autocheckTotal > 0 && (
             <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
           )}
           <TopicHomeworkStudent

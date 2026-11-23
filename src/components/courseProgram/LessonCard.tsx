@@ -82,7 +82,7 @@ export function LessonCard({
         <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-graphite-500">
           Урок {number}
           <TopicKindMark kind={topic.kind} />
-          <LessonFormatMark format={topic.lesson_format} kind={topic.kind} />
+          <LessonFormatMark format={topic.lesson_format} title={topic.title} kind={topic.kind} />
         </span>
         <span
           className={cn(
