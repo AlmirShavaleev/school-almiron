@@ -188,7 +188,7 @@ function keepPending(events: PerfEvent[]): void {
 const MAX_URGENT = 20
 const urgentSeen = new Set<string>()
 
-function noteUrgent(label: string, ms: number = now()): void {
+function noteUrgent(label: string, ms: number = 0): void {
   const l = label.slice(0, 120)
   if (urgentSeen.has(l) || urgentSeen.size >= MAX_URGENT) return
   urgentSeen.add(l)
@@ -231,7 +231,7 @@ export function noteUrgentNav(kind: string, path: string = typeof location !== '
  * про телефон: так видно, после чего вкладку убивает браузер.
  */
 export function noteNav(kind: string, path: string = typeof location !== 'undefined' ? location.pathname : ''): void {
-  record('nav', `${kind} ${routeLabel(path)}`.slice(0, 120), now())
+  record('nav', `${kind} ${routeLabel(path)}`.slice(0, 120), 0)
 }
 
 /**
@@ -332,7 +332,7 @@ export function noteError(message: unknown): void {
   errorsThisPage++
   const text = (message instanceof Error ? `${message.name}: ${message.message}` : String(message ?? 'unknown'))
     .replace(UUID_RE, ':id').replace(/\s+/g, ' ').trim()
-  record('nav', `error ${text}`.slice(0, 120), now())
+  record('nav', `error ${text}`.slice(0, 120), 0)
 }
 
 // ── отправка ───────────────────────────────────────────────────────────────
@@ -408,10 +408,10 @@ export function startRum(
   // Сессия supabase-js поднимается асинхронно: важные события старта
   // (`crash`) уходят, как только появился вход, а не через 30 с.
   const pendingTimers = [1500, 5000].map(ms => setTimeout(sendPending, ms))
+  recordNavigationTiming()
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('pagehide', onPageHide)
   window.addEventListener('pageshow', onPageShow)
-  recordNavigationTiming()
 
   return () => {
     clearInterval(timer)
@@ -426,34 +426,51 @@ export function startRum(
   }
 }
 
-/** Первая загрузка: TTFB, DOMContentLoaded, LCP (коротко; полные — у Vercel). */
+let navigationTimingRecorded = false
+
+/** Метрики исходного документа. Восстановление из BFCache не создаёт новый замер. */
 export function recordNavigationTiming(): void {
+  if (navigationTimingRecorded) return
+  navigationTimingRecorded = true
   try {
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-    const label = routeLabel(location.pathname)
+    const label = routeLabel(nav?.name ? new URL(nav.name, location.href).pathname : location.pathname)
     if (nav) {
       // Как открыли страницу: navigate / reload (F5 или программно) / back_forward.
       record('nav', `type ${nav.type || 'unknown'} ${label}`, nav.domContentLoadedEventEnd > 0 ? nav.domContentLoadedEventEnd : 0)
       if (nav.responseStart > 0) record('nav', `ttfb ${label}`, nav.responseStart)
-      const dcl = () => record('nav', `dcl ${label}`, nav.domContentLoadedEventEnd)
+      const dcl = () => {
+        if (nav.domContentLoadedEventEnd > 0) record('nav', `dcl ${label}`, nav.domContentLoadedEventEnd)
+      }
       if (nav.domContentLoadedEventEnd > 0) dcl()
       else window.addEventListener('DOMContentLoaded', () => setTimeout(dcl, 0), { once: true })
     }
-    if (typeof PerformanceObserver !== 'undefined'
+    if (document.visibilityState === 'visible'
+        && typeof PerformanceObserver !== 'undefined'
         && PerformanceObserver.supportedEntryTypes?.includes('largest-contentful-paint')) {
       let lcp = 0
-      const po = new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) lcp = Math.max(lcp, e.startTime)
-      })
+      const collect = (entries: PerformanceEntry[]) => {
+        for (const e of entries) lcp = Math.max(lcp, e.startTime)
+      }
+      const po = new PerformanceObserver((list) => collect(list.getEntries()))
       po.observe({ type: 'largest-contentful-paint', buffered: true })
       const done = () => {
+        collect(po.takeRecords())
         po.disconnect()
+        window.removeEventListener('pointerdown', done, true)
+        window.removeEventListener('keydown', done, true)
+        window.removeEventListener('pagehide', done)
+        document.removeEventListener('visibilitychange', onVisibility)
         if (lcp > 0) record('nav', `lcp ${label}`, lcp)
+      }
+      const onVisibility = () => {
+        if (document.visibilityState === 'hidden') done()
       }
       // LCP окончательный после первого взаимодействия или ухода
       addEventListener('pointerdown', done, { once: true, capture: true })
       addEventListener('keydown', done, { once: true, capture: true })
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') done() }, { once: true })
+      window.addEventListener('pagehide', done, { once: true })
+      document.addEventListener('visibilitychange', onVisibility)
     }
   } catch {
     /* RUM молчит */
@@ -474,6 +491,7 @@ export function __resetRumForTests(): void {
   sampled = true
   started = false
   crashChecked = false
+  navigationTimingRecorded = false
   urgentSeen.clear()
   try { sessionStorage.removeItem(ALIVE_KEY); sessionStorage.removeItem(HIDDEN_KEY) } catch { /* нет хранилища */ }
 }
