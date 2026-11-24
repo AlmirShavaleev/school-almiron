@@ -14,6 +14,7 @@ import {
   noteReload,
   queueSize,
   record,
+  recordNavigationTiming,
   routeChanged,
   routeLabel,
   startRum,
@@ -50,6 +51,35 @@ describe('метки', () => {
 })
 
 describe('замер', () => {
+  it('диагностическое событие не использует возраст открытой вкладки', () => {
+    noteNav('hide', '/my-homework')
+    noteError('example')
+    expect(takeBatch()).toMatchObject([
+      { k: 'nav', l: 'hide /my-homework', ms: 0 },
+      { k: 'nav', l: 'error example', ms: 0 },
+    ])
+  })
+
+  it('сохраняет медленную загрузку исходного документа один раз', () => {
+    const entries = vi.spyOn(performance, 'getEntriesByType').mockReturnValue([{
+      name: 'https://example.com/my-homework',
+      type: 'back_forward',
+      responseStart: 6100,
+      domContentLoadedEventEnd: 25000,
+    } as PerformanceNavigationTiming])
+    try {
+      recordNavigationTiming()
+      recordNavigationTiming()
+      expect(takeBatch()).toMatchObject([
+        { k: 'nav', l: 'type back_forward /my-homework', ms: 25000 },
+        { k: 'nav', l: 'ttfb /my-homework', ms: 6100 },
+        { k: 'nav', l: 'dcl /my-homework', ms: 25000 },
+      ])
+    } finally {
+      entries.mockRestore()
+    }
+  })
+
   it('timedFetch: запрос проходит как есть, событие api со статусом; RUM-отправка не меряется', async () => {
     const base = vi.fn(async () => new Response('{}', { status: 201 }))
     const f = timedFetch(base as unknown as typeof fetch)

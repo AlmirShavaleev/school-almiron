@@ -22,6 +22,11 @@ let attemptFiles: any[] = []
 let reviews: TopicHomeworkReviewRow[] = []
 let loading = false
 
+vi.mock(import('@/lib/storage'), async (importOriginal) => ({
+  ...await importOriginal(),
+  getSignedFileUrl: vi.fn().mockResolvedValue('https://example.test/signed-homework-image'),
+}))
+
 vi.mock('@/hooks/useTopicHomework', () => ({
   useTopicHomework: () => ({
     homework, files, attempts, attemptFiles, reviews, loading, error: null, reload: vi.fn(),
