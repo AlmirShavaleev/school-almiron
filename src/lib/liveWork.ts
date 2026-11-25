@@ -262,6 +262,7 @@ export function shouldPoll(phase: WorkPhase, counters: Pick<LiveCounters, 'photo
 export interface LiveWorkBrief {
   homeworkId: string
   topicId: string
+  courseId: string | null
   title: string
   kind: 'check' | 'control'
   groupName: string | null
@@ -279,6 +280,7 @@ export function parseLiveWorksList(raw: unknown): LiveWorkBrief[] {
     .map(x => ({
       homeworkId: x.homework_id as string,
       topicId: str(x.topic_id) ?? '',
+      courseId: str(x.course_id),
       title: str(x.title) ?? 'Работа',
       kind: x.kind === 'check' ? 'check' : 'control',
       groupName: str(x.group_name),

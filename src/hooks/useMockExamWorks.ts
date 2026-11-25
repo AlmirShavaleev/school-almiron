@@ -7,6 +7,7 @@ import { normalize as normalizeTemplate } from '@/hooks/useMockExamTemplates'
 import type { MockExamTemplate } from '@/hooks/useMockExamGrid'
 import type { MockExamResultNotifyRow, NotifySummary } from '@/lib/mockExamNotify'
 import { windowOf, type ExamWindow, type WorkInput } from '@/lib/mockExamV3'
+import type { Tables } from '@/types/database'
 
 /**
  * §228. Данные страницы пробника («Работы») и экрана проверки работы: пробник,
@@ -47,6 +48,7 @@ export interface WorksExam {
   id: string
   title: string
   date: string
+  maxScore: number
   group_id: string | null
   groupName: string | null
   courseId: string | null
@@ -92,9 +94,14 @@ export interface WorksStudent extends WorkInput {
 
 const RESULT_COLUMNS = 'student_id, score, part1_score, part2_score, notified_at, notified_score, notified_part1_score, notified_part2_score'
 
+export type LegacyMockExamResult = Pick<Tables<'mock_exam_results'>, 'student_id' | 'score' | 'part1_score' | 'part2_score' | 'notes'> & {
+  students: { profiles: { full_name: string } | null } | null
+}
+
 export function useMockExamWorks(examId: string | undefined) {
   const [exam, setExam] = useState<WorksExam | null>(null)
   const [students, setStudents] = useState<WorksStudent[]>([])
+  const [legacyResults, setLegacyResults] = useState<{ rows: LegacyMockExamResult[]; error: string | null } | null>(null)
   const [key, setKey] = useState<(string | null)[] | null>(null)
   /** §229. Варианты пробника по номеру; пусто — пробник без вариантов (или база до §229). */
   const [variants, setVariants] = useState<WorksVariant[]>([])
@@ -111,19 +118,26 @@ export function useMockExamWorks(examId: string | undefined) {
     ;(async () => {
       setError(null)
       const { data: e, error: eErr } = await db.from<any>('mock_exams')
-        .select('id, title, date, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)')
+        .select('id, title, date, max_score, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)')
         .eq('id', examId).maybeSingle()
       if (cancelled) return
       if (eErr || !e) { setError(eErr?.message || 'Пробник не найден'); setLoading(false); return }
       const template = e.mock_exam_templates ? normalizeTemplate(e.mock_exam_templates) : null
       const win = e.starts_at ? windowOf(e) : null
       const ex: WorksExam = {
-        id: e.id, title: e.title, date: e.date, group_id: e.group_id ?? null,
+        id: e.id, title: e.title, date: e.date, maxScore: e.max_score, group_id: e.group_id ?? null,
         groupName: e.groups?.name ?? null, courseId: e.groups?.course_id ?? null,
         template, window: win,
         condition_path: e.condition_path ?? null, solution_path: e.solution_path ?? null,
       }
       if (!ex.group_id || !template) {
+        const { data, error: resultError } = await supabase.from('mock_exam_results')
+          .select('student_id, score, part1_score, part2_score, notes, students(profiles(full_name))')
+          .eq('mock_exam_id', ex.id)
+        if (cancelled) return
+        const rows = (data ?? []).sort((a, b) =>
+          (a.students?.profiles?.full_name ?? '').localeCompare(b.students?.profiles?.full_name ?? '', 'ru'))
+        setLegacyResults({ rows, error: resultError?.message ?? null })
         setExam(ex); setStudents([]); setKey(null); setVariants([]); setLoading(false)
         return
       }
@@ -203,6 +217,7 @@ export function useMockExamWorks(examId: string | undefined) {
       }
       // Алфавит — как в таблице §218 и в журнале преподавателя.
       const list = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+      setLegacyResults(null)
       setExam(ex)
       setStudents(list)
       setVariants(vList)
@@ -252,5 +267,5 @@ export function useMockExamWorks(examId: string | undefined) {
     return { error: null, summary: data }
   }, [exam])
 
-  return { exam, students, key, variants, loading, error, reload, saveRow, saveComments, commentsReady, notify }
+  return { exam, students, legacyResults, key, variants, loading, error, reload, saveRow, saveComments, commentsReady, notify }
 }

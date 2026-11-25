@@ -131,9 +131,10 @@ function sharedScope(profileId: string, needsFilter: boolean, curatedKey: string
   return p
 }
 
-export function useMyTeachingScope(): TeachingScope {
+export function useMyTeachingScope(alwaysOwnCourses = false): TeachingScope {
   const profile = useAuthStore(s => s.profile)
-  const needsFilter = useNeedsOwnDataFilter()
+  const teacherMode = useNeedsOwnDataFilter()
+  const needsFilter = teacherMode || (alwaysOwnCourses && (profile?.role === 'admin' || profile?.role === 'owner'))
   const curatorships = useMyCuratorships()
   const [scope, setScope] = useState<TeachingScope>(IDLE)
 

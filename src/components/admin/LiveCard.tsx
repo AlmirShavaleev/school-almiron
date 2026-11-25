@@ -1,7 +1,7 @@
 import { useReducedMotion } from 'framer-motion'
 import '@/components/charts/schoolCharts.css'
 import { ArrowDownRight, ArrowRight, ArrowUpRight, Minus } from 'lucide-react'
-import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts'
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 import { cn } from '@/utils/cn'
 import {
   changeMood, flowSummary, levelSummary, splitUnfinishedTail,
@@ -134,6 +134,7 @@ export function LiveCard(props: LiveCardProps) {
                   <stop offset="100%" stopColor={color} stopOpacity={0} />
                 </linearGradient>
               </defs>
+              <XAxis dataKey="label" hide />
               <Tooltip
                 cursor={false}
                 labelFormatter={(label: unknown) => formatDayLabel(String(label ?? ''))}
@@ -182,5 +183,5 @@ export function LiveCard(props: LiveCardProps) {
 function formatDayLabel(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })
 }

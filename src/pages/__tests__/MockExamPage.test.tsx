@@ -101,6 +101,24 @@ describe('после окна — «Проверка»', () => {
 })
 
 describe('вкладки', () => {
+  it('показывает сохранённые результаты старого пробника без группы и шаблона', async () => {
+    db = {
+      exam: { ...examRow(null), max_score: 100, group_id: null, template_id: null, groups: null, mock_exam_templates: null },
+      tables: {
+        mock_exam_results: [{ ...ROSTER[0], score: 82, part1_score: 42, part2_score: 40, notes: 'Нужна практика' }],
+      },
+      rpcCalls: [],
+    }
+    mount()
+    const table = await screen.findByRole('table', { name: 'Сохранённые результаты пробника' })
+    expect(screen.getByRole('tab', { name: 'Результаты' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(table).getByText('Гарипов Тимур')).toBeInTheDocument()
+    expect(within(table).getByText('82 / 100')).toBeInTheDocument()
+    expect(within(table).getByText('Нужна практика')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-stepper')).not.toBeInTheDocument()
+    expect(db.rpcCalls).toHaveLength(0)
+  })
+
   it('«Таблица баллов» — таблица §218 встроенной; «Настройка» — форма этого пробника', async () => {
     mount('/mock-exams/ex1?tab=table')
     expect(await screen.findByTestId('grid-stub')).toHaveAttribute('data-embedded', 'true')

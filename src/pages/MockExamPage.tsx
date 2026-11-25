@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -7,10 +7,11 @@ import { ExamStepper, LiveHead, WorksTable } from '@/components/mockExams/MockEx
 import { MockExamAiBar } from '@/components/mockExams/MockExamAiBar'
 import { MockExamAiTab } from '@/components/mockExams/MockExamAiTab'
 import { MockExamGridPage } from '@/pages/MockExamGridPage'
-import { useMockExamWorks } from '@/hooks/useMockExamWorks'
+import { useMockExamWorks, type LegacyMockExamResult } from '@/hooks/useMockExamWorks'
 import { useMockExamAi } from '@/hooks/useMockExamAi'
 import { useMockExamLive } from '@/hooks/useMockExamLive'
 import { useMockExamAway } from '@/hooks/useMockExamAway'
+import { useMockExamClock } from '@/hooks/useMockExamClock'
 import { awayLabel } from '@/lib/liveWork'
 import { mskDayLong, mskTime } from '@/lib/mockExamLesson'
 import { livePhase, liveRows } from '@/lib/mockExamLive'
@@ -37,14 +38,14 @@ export function MockExamPage() {
   const location = useLocation()
   const [params, setParams] = useSearchParams()
   const works = useMockExamWorks(id)
-  const { exam, students, loading, error, reload } = works
+  const { exam, students, legacyResults, loading, error, reload } = works
   // §222b. Предложения ИИ по второй части — прогресс и «у всех» над «Работами».
   const ai = useMockExamAi(id)
   const win = exam?.window ?? null
   // Монитор §224: пока окно не закрылось + догрузка фото — опрос раз в 20 с;
   // вместе с ним перечитываем работы (новые бланки, сдачи, фото).
   const { live, offset } = useMockExamLive(exam?.id, win, reload)
-  const now = useClock(offset)
+  const now = useMockExamClock(offset)
   // §263. Уходы учеников со страницы пробника — к метке «пишет» в мониторе.
   const away = useMockExamAway(exam?.id, live)
   const [confirmAll, setConfirmAll] = useState(false)
@@ -56,9 +57,11 @@ export function MockExamPage() {
   const next = nextToReview(rows, null)
   const pendingNotify = notifyCheckedIds(rows).length
   const tabParam = params.get('tab')
+  const hasLegacyScores = !!legacyResults?.rows.length
   // «Проверка ИИ» — у пробника со второй частью, когда таблицы ИИ доступны.
-  const hasAiTab = ai.available && !!exam?.template && exam.template.part1_last < exam.template.max_points.length
-  const tab: ExamTab = tabParam === 'works' || tabParam === 'table' || tabParam === 'setup' || (tabParam === 'ai' && hasAiTab) ? tabParam : defaultTab(stage, !!win)
+  const hasAiTab = ai.available && !!exam?.group_id && !!exam.template && exam.template.part1_last < exam.template.max_points.length
+  const initialTab = hasLegacyScores ? 'table' : defaultTab(stage, !!win)
+  const tab: ExamTab = tabParam === 'works' || tabParam === 'table' || tabParam === 'setup' || (tabParam === 'ai' && hasAiTab) ? tabParam : initialTab
   const pickTab = (t: ExamTab) => { const nx = new URLSearchParams(params); nx.set('tab', t); setParams(nx, { replace: true }); setConfirmAll(false) }
 
   const created = (location.state as { created?: { id: string; groupName: string }[]; problems?: string[]; warning?: string | null; draft?: boolean } | null) ?? null
@@ -109,11 +112,11 @@ export function MockExamPage() {
           <h1 className="text-2xl font-semibold leading-tight text-graphite-900 [text-wrap:balance] sm:text-[26px]" data-testid="mock-page-title">
             {exam.title} · {win ? `${mskDayLong(win.starts_at)}, ${mskTime(win.starts_at)}–${mskTime(win.ends_at)}` : mskDayLong(exam.date)}
           </h1>
-          <ExamStepper stage={stage} />
+          {!hasLegacyScores && <ExamStepper stage={stage} />}
         </div>
         {primary && <Button onClick={primary.onClick} className="shrink-0" data-testid={primary.testid}>{primary.label}</Button>}
       </header>
-      <p className="max-w-[860px] text-base text-graphite-900 sm:text-[17px]" data-testid="mock-page-summary">{summary}</p>
+      {!hasLegacyScores && <p className="max-w-[860px] text-base text-graphite-900 sm:text-[17px]" data-testid="mock-page-summary">{summary}</p>}
 
       {created?.created && created.created.length > 0 && (
         <div className="rounded-lg bg-verdict-ok-tint px-3 py-2 text-sm text-verdict-ok-ink" role="status" data-testid="mock-page-created">
@@ -131,7 +134,7 @@ export function MockExamPage() {
       <div className="rounded-card bg-white px-3 pb-2 shadow-card sm:px-5">
         <div className="flex gap-1 overflow-x-auto border-b border-graphite-200" role="tablist" aria-label="Разделы пробника">
           <TabButton on={tab === 'works'} onClick={() => pickTab('works')} testid="mock-tab-works">Работы · {rows.length}</TabButton>
-          <TabButton on={tab === 'table'} onClick={() => pickTab('table')} testid="mock-tab-table">Таблица баллов</TabButton>
+          <TabButton on={tab === 'table'} onClick={() => pickTab('table')} testid="mock-tab-table">{legacyResults ? 'Результаты' : 'Таблица баллов'}</TabButton>
           <TabButton on={tab === 'setup'} onClick={() => pickTab('setup')} testid="mock-tab-setup">Настройка</TabButton>
           {hasAiTab && (
             <TabButton on={tab === 'ai'} onClick={() => pickTab('ai')} testid="mock-tab-ai">Проверка ИИ{aiWaiting > 0 ? ` · ${aiWaiting}` : ''}</TabButton>
@@ -159,7 +162,10 @@ export function MockExamPage() {
               </>
             )
           )}
-          {tab === 'table' && <div className="pt-4"><MockExamGridPage embedded onChanged={reload} /></div>}
+          {tab === 'table' && (
+            legacyResults ? <LegacyResults rows={legacyResults.rows} error={legacyResults.error} maxScore={exam.maxScore} />
+              : <div className="pt-4"><MockExamGridPage embedded onChanged={reload} /></div>
+          )}
           {tab === 'setup' && <div className="py-4"><MockExamForm mode={{ kind: 'edit', examId: exam.id, onSaved: reload }} /></div>}
           {tab === 'ai' && exam.template && (
             <MockExamAiTab examId={exam.id} ai={ai} students={students} part1Last={exam.template.part1_last} maxPoints={exam.template.max_points}
@@ -171,6 +177,40 @@ export function MockExamPage() {
   )
 }
 
+function LegacyResults({ rows, error, maxScore }: { rows: LegacyMockExamResult[]; error: string | null; maxScore: number }) {
+  if (error) return <p role="alert" className="py-4 text-sm text-verdict-bad-ink">Не удалось загрузить результаты.</p>
+  if (!rows.length) return <p className="py-4 text-sm text-graphite-600">Сохранённых результатов пока нет.</p>
+
+  return (
+    <div className="overflow-x-auto pb-2 pt-3">
+      <table className="w-full text-left text-sm">
+        <caption className="sr-only">Сохранённые результаты пробника</caption>
+        <thead className="border-b border-graphite-200 text-graphite-600">
+          <tr>
+            <th scope="col" className="px-2.5 py-3">Ученик</th>
+            <th scope="col" className="whitespace-nowrap px-2.5 py-3 text-right">Баллы</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-graphite-200">
+          {rows.map(result => (
+            <tr key={result.student_id}>
+              <th scope="row" className="px-2.5 py-3 align-top font-medium text-graphite-900">
+                {result.students?.profiles?.full_name || '—'}
+                {result.notes && <p className="mt-1 whitespace-pre-wrap break-words font-normal text-graphite-600">{result.notes}</p>}
+              </th>
+              <td className="whitespace-nowrap px-2.5 py-3 text-right align-top">
+                <div className="font-semibold tabular-nums text-graphite-900">{result.score} / {maxScore}</div>
+                {result.part1_score != null && <div className="text-xs text-graphite-600">Часть 1 · {result.part1_score}</div>}
+                {result.part2_score != null && <div className="text-xs text-graphite-600">Часть 2 · {result.part2_score}</div>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function TabButton({ on, onClick, children, testid }: { on: boolean; onClick: () => void; children: React.ReactNode; testid: string }) {
   return (
     <button type="button" role="tab" aria-selected={on} onClick={onClick} data-testid={testid}
@@ -178,14 +218,4 @@ function TabButton({ on, onClick, children, testid }: { on: boolean; onClick: ()
       {children}
     </button>
   )
-}
-
-/** «Сейчас» по часам базы, шаг 15 с — статусу и таймлайну хватает. */
-function useClock(offset: number): number {
-  const [tick, setTick] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setTick(Date.now()), 15_000)
-    return () => clearInterval(t)
-  }, [])
-  return tick + offset
 }

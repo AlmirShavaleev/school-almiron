@@ -1,176 +1,102 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { TeacherDashboard } from '@/pages/teacher/TeacherDashboard'
-import { EMPTY_HOME, type OverdueRow, type TeacherHomeData } from '@/lib/teacherHome'
-import type { QueueRow } from '@/lib/homeworkQueue'
+import type { TeacherHomeData } from '@/lib/teacherHome'
 
-/**
- * §233. Главная преподавателя v2 (экран 03). Прежний тест проверял плитки и
- * «Ждут проверки: N работ» старой главной — этого экрана больше нет. Замысел
- * «очередь — по живому контуру topic_homework» сохранён: работы на проверке
- * приходят строками очереди (`QueueRow`), а не из легаси.
- */
+const { useHome, useLive, useActivity } = vi.hoisted(() => ({ useHome: vi.fn(), useLive: vi.fn(), useActivity: vi.fn() }))
+vi.mock('@/hooks/useTeacherHome', () => ({ useTeacherHome: useHome }))
+vi.mock('@/hooks/useMyLiveTimedWorks', () => ({ useMyLiveTimedWorks: useLive }))
+vi.mock('@/hooks/useTeacherActivity', () => ({ useTeacherActivity: useActivity }))
 
-const hook = vi.fn()
-vi.mock('@/hooks/useTeacherHome', () => ({ useTeacherHome: () => hook() }))
-
-const q = (id: string, hw: string, submitted: string, due: string | null): QueueRow => ({
-  attempt: { id, homework_id: hw, student_id: `st-${id}`, attempt_number: 1, status: 'submitted', submitted_at: submitted, created_at: submitted, updated_at: submitted } as QueueRow['attempt'],
-  history: [], homeworkId: hw, homeworkTitle: 'ДЗ', gradeScale: 'five', dueAt: due,
-  topicId: `t-${hw}`, topicTitle: hw === 'h13' ? 'Отбор корней' : 'Векторы', courseId: 'c1', courseTitle: 'Математика',
-})
-
-const od = (o: Partial<OverdueRow>): OverdueRow => ({
-  homework_id: 'h13', topic_id: 't-h13', course_id: 'c1', group_id: 'g1', group_name: '11А · Профиль', title: 'Отбор корней',
-  student_id: 's1', student_name: 'Сафин Данияр', due_date: '2026-09-24', telegram: 'ok', reminded_at: null, ...o,
-})
-
-const overdue: OverdueRow[] = [
-  od({ student_id: 's1', student_name: 'Сафин Данияр' }),
-  od({ student_id: 's2', student_name: 'Ахмадуллин Рустем' }),
-  od({ student_id: 's3', student_name: 'Зиннатуллин Артур', due_date: '2026-09-25' }),
-  od({ student_id: 's4', student_name: 'Никитина Вера', telegram: 'none', due_date: '2026-09-25' }),
-]
-
-const full: TeacherHomeData = {
-  ...EMPTY_HOME,
-  today: '2026-09-26',
-  now: '2026-09-26T09:00:00Z',
-  groups: [{ course_id: 'c1', course_title: 'Математика', group_id: 'g1', name: '11А · Профиль' }],
-  mock_pending: [{ mock_exam_id: 'm3', title: 'Пробник №3', group_name: '11А · Профиль', works: 2, oldest_student_id: 'st9', oldest_at: '2026-09-23T10:00:00Z' }],
-  overdue,
-  series: [
-    { student_id: 's7', student_name: 'Валиев Карим', course_id: 'c1', group_name: '11А · Профиль', hw: [78, 84, 80, 86, 77, 55, 50, 57], mocks: [] },
-    { student_id: 's8', student_name: 'Ровный Ученик', course_id: 'c1', group_name: '11А · Профиль', hw: [80, 80, 80, 80, 80, 80, 80, 80], mocks: [] },
+const home: TeacherHomeData = {
+  students: 21, enrolled: 3, withResult: 14,
+  groups: [
+    { id: 'g1', name: '11А', courseTitle: 'Физика ЕГЭ', students: 15, enrolled: 2, withResult: 12 },
+    { id: 'g2', name: '11Б', courseTitle: 'Математика ЕГЭ', students: 7, enrolled: 1, withResult: 2 },
   ],
-  upcoming: [{ kind: 'mock', id: 'm4', topic_id: null, course_id: 'c1', group_name: '11А', title: 'Пробник №4', day: '2026-10-03', time: '10:00' }],
+  upcoming: [{ id: 'exam-1', title: 'Пробник по физике', groupName: '11А', startsAt: '2026-11-27T09:30:00Z' }],
 }
 
-const pending = [
-  q('a1', 'h13', '2026-09-20T10:00:00Z', '2026-09-19'),
-  q('a2', 'h13', '2026-09-18T10:00:00Z', '2026-09-19'),
-  q('a3', 'h2', '2026-09-24T10:00:00Z', null),
-]
-
-const remind = vi.fn()
-function state(o: Partial<ReturnType<typeof base>> = {}) { return { ...base(), ...o } }
-function base() {
-  return { pending: [] as QueueRow[], home: { ...EMPTY_HOME, today: '2026-09-26' } as TeacherHomeData, loading: false, error: null as string | null, reload: vi.fn(), remind }
-}
-
+const reload = vi.fn()
+const data = { home, today: '2026-11-25', loading: false, error: null, reload, courseIds: null }
 const renderPage = () => render(<MemoryRouter><TeacherDashboard /></MemoryRouter>)
 
-describe('Главная преподавателя v2', () => {
+describe('Кабинет учителя', () => {
   beforeEach(() => {
-    remind.mockReset()
-    hook.mockReturnValue(state({ pending, home: full }))
+    useHome.mockReturnValue(data)
+    useLive.mockReturnValue({ works: [], serverNow: null })
+    useActivity.mockReturnValue({ data: null, loading: false, failed: false, reload: vi.fn() })
+    reload.mockClear()
   })
 
-  it('баннер: дата и фраза из чисел блоков — работы ДЗ и пробника, просрочка по сроку сдачи, должники, просевшие', () => {
+  it('показывает общую сводку и ссылки на учеников и группы', () => {
     renderPage()
-    expect(screen.getByText('Суббота, 26 сентября')).toBeInTheDocument()
-    expect(screen.getByTestId('teacher-home-phrase')).toHaveTextContent(
-      '5 работ ждут проверки, 1 из них просрочена. Четверо не сдали ДЗ «Отбор корней». Один ученик просел на последних работах.',
-    )
+    expect(screen.getByRole('heading', { name: 'Кабинет учителя' })).toBeInTheDocument()
+    expect(screen.getByText('Среда, 25 ноября')).toBeInTheDocument()
+    const overview = screen.getByRole('region', { name: 'Сводка по ученикам' })
+    expect(within(overview).getByText('21')).toBeInTheDocument()
+    expect(within(overview).getByText('3')).toBeInTheDocument()
+    expect(within(overview).getByText('14')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ученики' })).toHaveAttribute('href', '/students')
+    const group = screen.getByRole('link', { name: /11А Физика ЕГЭ/ })
+    expect(group).toHaveAttribute('href', '/groups/g1')
+    expect(within(group).getByText('15')).toBeInTheDocument()
+    expect(within(group).getByText('12')).toBeInTheDocument()
   })
 
-  it('одна главная кнопка — в проверку самой давней работы (здесь — ДЗ, сдано 18-го)', () => {
+  it('главная без очереди и персональных предупреждений, ближайший пробник открывается из расписания', () => {
     renderPage()
-    const start = screen.getByTestId('teacher-home-start')
-    expect(start).toHaveTextContent('Начать проверку — с самых давних →')
-    expect(start).toHaveAttribute('href', '/homework-queue?attempt=a2')
+    expect(screen.queryByText(/на проверке|просели|не сдали|напомнить/i)).not.toBeInTheDocument()
+    const upcoming = screen.getByRole('link', { name: /Пробник по физике/ })
+    expect(upcoming).toHaveAttribute('href', '/mock-exams/exam-1')
+    expect(upcoming).toHaveTextContent('27 ноября, 12:30 МСК · 11А')
   })
 
-  it('«На проверке»: строка на задание с группой, числом и просрочкой; ведёт в очередь задания', () => {
+  it('пустая сводка показывает отсутствие групп и скрывает пустое расписание', () => {
+    useHome.mockReturnValue({ ...data, home: { groups: [], students: 0, enrolled: 0, withResult: 0, upcoming: [] } })
     renderPage()
-    const block = screen.getByTestId('home-review')
-    expect(within(block).getByText('5 работ')).toBeInTheDocument()
-    const rows = within(block).getAllByTestId('home-review-row')
-    expect(rows.map(r => r.getAttribute('href'))).toEqual([
-      '/homework-queue?topic=t-h13', '/mock-exams/m3?tab=works', '/homework-queue?topic=t-h2',
-    ])
-    expect(rows[0]).toHaveTextContent('Отбор корней')
-    expect(rows[0]).toHaveTextContent('11А · Профиль')
-    expect(rows[0]).toHaveTextContent('1 просрочена')
-    expect(rows[1]).toHaveTextContent('Пробник №3')
+    expect(screen.getByText('Активных учебных групп пока нет.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Ближайшие пробники' })).not.toBeInTheDocument()
   })
 
-  it('«Не сдали к сроку»: имя · ДЗ · когда; строка ведёт к ученику; кнопка и честная оговорка про Telegram', () => {
+  it('ошибка загрузки даёт повторить запрос', () => {
+    useHome.mockReturnValue({ ...data, home: null, error: 'Не удалось загрузить сводку.' })
     renderPage()
-    const rows = screen.getAllByTestId('home-overdue-row')
-    expect(rows).toHaveLength(4)
-    expect(rows[0]).toHaveTextContent('Сафин Данияр · Отбор корней')
-    expect(rows[0]).toHaveTextContent('срок прошёл 2 дня назад')
-    expect(rows[2]).toHaveTextContent('вчера')
-    expect(rows[0]).toHaveAttribute('href', '/students/s1')
-    expect(screen.getByTestId('home-remind')).toHaveTextContent('Напомнить всем троим')
-    expect(screen.getByTestId('home-remind-note')).toHaveTextContent('3 из 4 — нет Telegram: Никитина В.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить сводку.')
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(reload).toHaveBeenCalledOnce()
   })
 
-  it('«Напомнить всем» зовёт отправку по ученикам с экрана — каждый один раз', async () => {
-    let done: () => void = () => {}
-    remind.mockReturnValue(new Promise<void>(r => { done = r }))
+  it('режим учителя показывает монитор только для своих курсов', () => {
+    useHome.mockReturnValue({ ...data, courseIds: ['mine'] })
+    const work = { topicId: 'topic', kind: 'check', groupName: null, opensAt: null, closesAt: null, personalLive: 1 }
+    useLive.mockReturnValue({ works: [
+      { ...work, homeworkId: 'w1', courseId: 'mine', title: 'Контрольная своей группы' },
+      { ...work, homeworkId: 'w2', courseId: 'others', title: 'Чужая контрольная' },
+    ], serverNow: null })
     renderPage()
-    fireEvent.click(screen.getByTestId('home-remind'))
-    expect(remind).toHaveBeenCalledWith(['s1', 's2', 's3', 's4'])
-    expect(screen.getByTestId('home-remind')).toHaveTextContent('Отправляем…')
-    expect(screen.getByTestId('home-remind')).toBeDisabled()
-    done()
-    await waitFor(() => expect(screen.getByTestId('home-remind')).not.toBeDisabled())
+    expect(screen.getByText('Контрольная своей группы')).toBeInTheDocument()
+    expect(screen.queryByText('Чужая контрольная')).not.toBeInTheDocument()
   })
 
-  it('после отправки: «Напомнили в 14:05» вместо кнопки, оговорка про Telegram остаётся', () => {
-    const at = '2026-09-26T11:05:00.000Z' // 14:05 МСК
-    hook.mockReturnValue(state({
-      pending,
-      home: { ...full, overdue: overdue.map(r => (r.telegram === 'ok' ? { ...r, reminded_at: at } : r)) },
-    }))
+  it('показывает активность своих курсов с недельными итогами и охватом', () => {
+    useHome.mockReturnValue({ ...data, courseIds: ['mine'] })
+    const series = (value: number) => Array.from({ length: 14 }, (_, i) => ({ day: `2026-11-${12 + i}`, value }))
+    useActivity.mockReturnValue({
+      data: {
+        asOf: '2026-11-25T08:00:00Z', online: 2, enrolled: 20, visitedWeek: 15, visitDaysPerVisitor: 2.8,
+        visits: series(2), submissions: series(1), completed: series(0),
+      },
+      loading: false, failed: false, reload: vi.fn(),
+    })
     renderPage()
-    expect(screen.queryByTestId('home-remind')).not.toBeInTheDocument()
-    expect(screen.getByTestId('home-reminded')).toHaveTextContent('Напомнили в 14:05')
-    expect(screen.getByTestId('home-remind-note')).toHaveTextContent('3 из 4 — нет Telegram: Никитина В.')
-  })
-
-  it('отказ отправки показывается словами', async () => {
-    remind.mockRejectedValue(new Error('Нет доступа к ученику'))
-    renderPage()
-    fireEvent.click(screen.getByTestId('home-remind'))
-    expect(await screen.findByText('Нет доступа к ученику')).toBeInTheDocument()
-  })
-
-  it('«Просели»: только тот, кто просел; подпись и 8 столбиков, 3 последних — красные', () => {
-    renderPage()
-    const rows = screen.getAllByTestId('home-drop-row')
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toHaveTextContent('Валиев Карим')
-    expect(rows[0]).toHaveTextContent('было 81 % по 5 работам, стало 54 % по 3 последним')
-    expect(rows[0]).toHaveAttribute('href', '/students/s7')
-    const bars = rows[0].querySelectorAll('[data-recent]')
-    expect(Array.from(bars).map(b => b.getAttribute('data-recent'))).toEqual(['false', 'false', 'false', 'false', 'false', 'true', 'true', 'true'])
-  })
-
-  it('«Ближайшее»: день недели, дата, пробник со временем и группой', () => {
-    renderPage()
-    const row = screen.getByTestId('home-upcoming-row')
-    expect(row).toHaveTextContent('сб, 3 октября')
-    expect(row).toHaveTextContent('Пробник №4 в 10:00 · 11А')
-    expect(row).toHaveAttribute('href', '/mock-exams/m4')
-  })
-
-  it('пусто: спокойная фраза, ни кнопки, ни пустых блоков', () => {
-    hook.mockReturnValue(state())
-    renderPage()
-    expect(screen.getByTestId('teacher-home-phrase')).toHaveTextContent('Всё проверено. Никто не просрочил.')
-    expect(screen.queryByTestId('teacher-home-start')).not.toBeInTheDocument()
-    for (const id of ['home-review', 'home-overdue', 'home-drop', 'home-upcoming']) {
-      expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-    }
-  })
-
-  it('плиток со статистикой старой главной больше нет', () => {
-    renderPage()
-    expect(screen.queryByText('Тестов в банке')).not.toBeInTheDocument()
-    expect(screen.queryByText('Мои курсы')).not.toBeInTheDocument()
+    expect(useActivity).toHaveBeenCalledWith(['mine'])
+    expect(screen.getByTestId('teacher-card-visits-value')).toHaveTextContent('14')
+    expect(screen.getByTestId('teacher-card-submissions-value')).toHaveTextContent('7')
+    expect(screen.getByTestId('teacher-card-completed-value')).toHaveTextContent('0')
+    expect(screen.getByText('15 из 20')).toBeInTheDocument()
+    expect(screen.getByText('75 % учеников')).toBeInTheDocument()
+    expect(screen.queryByText('Очередь проверки')).not.toBeInTheDocument()
   })
 })

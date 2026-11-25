@@ -104,22 +104,23 @@ describe('Performance — pagination', () => {
     expect(read('src/pages/catalog/CatalogTopicPage.tsx')).toContain('const PAGE_SIZE = 25')
   })
 
-  it('renders only first PAGE_SIZE tasks (visibleCount slice)', () => {
-    const src = read('src/pages/catalog/CatalogTopicPage.tsx')
+  it('loads task content and assets in visible batches', () => {
+    const src = read('src/hooks/useCatalog.ts')
     expect(src).toContain('filtered.slice(0, visibleCount)')
+    expect(src).toContain('chunk(visible.map(task => task.id), pageSize)')
+    expect(src).toContain('loadTopicTaskPage(ids, signal)')
   })
 
   it('show-more button shows remaining count and total', () => {
     const src = read('src/pages/catalog/CatalogTopicPage.tsx')
-    expect(src).toContain('filtered.length - visibleCount')
-    // JSX expression: {visibleCount} из {filtered.length}
-    expect(src).toContain('{visibleCount} из {filtered.length}')
+    expect(src).toContain('filteredCount - visibleCount')
+    expect(src).toContain('{visibleTasks.length} из {filteredCount}')
   })
 
   it('visibleCount resets when topicId or filter changes', () => {
     const src = read('src/pages/catalog/CatalogTopicPage.tsx')
-    expect(src).toContain('[topicId, filter]')
-    expect(src).toContain('setVisibleCount(PAGE_SIZE)')
+    expect(src).toContain('[topicId, view, filter, [...difficultyFilter].sort()]')
+    expect(src).toContain('setPagination({ key: pageKey, count: PAGE_SIZE })')
   })
 
   it('sort puts exam_number=0 last', () => {
@@ -1077,16 +1078,17 @@ describe('Physics topics mode', () => {
   it('CatalogTopicPage forwards view to hooks and keeps it in links', () => {
     const src = read('src/pages/catalog/CatalogTopicPage.tsx')
     expect(src).toContain("const view = (searchParams.get('view') as CatalogViewMode | null) ?? 'exam'")
-    expect(src).toContain('useCatalogTasks(topicId, retryKey, view)')
+    expect(src).toContain('useCatalogTopicTasks(sectionLocked ? undefined : topicId, {')
+    expect(src).toContain('view, retryKey, filter, difficulties: difficultyFilter')
     expect(src).toContain("useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)")
     expect(src).toContain('useCatalogPhysicsTopicSections(isPhysicsTopicsView, retryKey)')
     expect(src).toContain("view === 'physics-topics' ? '&view=physics-topics' : ''")
   })
 
-  it('useCatalogTasks filters physics-topics by source', () => {
+  it('useCatalogTopicTasks filters physics-topics by source', () => {
     const src = read('src/hooks/useCatalog.ts')
     expect(src).toContain("view === 'physics-topics'")
-    expect(src).toContain("fetchAllTopicTaskIds(topicId!, view === 'physics-topics' ? AI_PHYSICS_SOURCE : undefined)")
+    expect(src).toContain("query.eq('links.source', AI_PHYSICS_SOURCE).eq('links.is_primary', true)")
     expect(src).toContain('difficulty, statement_html')
   })
 

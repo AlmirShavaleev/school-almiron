@@ -4,19 +4,22 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 const mocks = vi.hoisted(() => ({
   useCatalogSections: vi.fn(),
+  useCatalogSectionHeader: vi.fn(),
   useCatalogTopics: vi.fn(),
   useCatalogPhysicsTopicSections: vi.fn(),
   useCatalogSearch: vi.fn(),
-  useCatalogTasks: vi.fn(),
+  useCatalogTopicTasks: vi.fn(),
   useCatalogOverview: vi.fn(),
 }))
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalogSections: (...args: unknown[]) => mocks.useCatalogSections(...args),
+  useCatalogSectionHeader: (...args: unknown[]) => mocks.useCatalogSectionHeader(...args),
   useCatalogTopics: (...args: unknown[]) => mocks.useCatalogTopics(...args),
   useCatalogPhysicsTopicSections: (...args: unknown[]) => mocks.useCatalogPhysicsTopicSections(...args),
   useCatalogSearch: (...args: unknown[]) => mocks.useCatalogSearch(...args),
-  useCatalogTasks: (...args: unknown[]) => mocks.useCatalogTasks(...args),
+  useCatalogTopicTasks: (...args: unknown[]) => mocks.useCatalogTopicTasks(...args),
+  ALL_SUBJECTS: ['Математика', 'Физика'],
   SUBJECT_SLUGS: { 'Математика': 'math', 'Физика': 'physics' },
   SUBJECT_FROM_SLUG: { math: 'Математика', physics: 'Физика' },
   EXAM_FROM_SLUG: { ege: 'ЕГЭ', oge: 'ОГЭ' },
@@ -46,15 +49,19 @@ describe('Catalog error states', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.useCatalogSections.mockReturnValue({ sections: [], loading: false, error: null })
+    mocks.useCatalogSectionHeader.mockReturnValue({
+      section: { id: 'sec-1', title: 'Раздел 1', subject: 'Математика', exam_number: 1 },
+      locked: false,
+      error: null,
+    })
     mocks.useCatalogTopics.mockReturnValue({ topics: [], loading: false, error: null })
     mocks.useCatalogPhysicsTopicSections.mockReturnValue({ sections: [], loading: false, error: null })
     mocks.useCatalogSearch.mockReturnValue({ results: [], loading: false, error: null })
-    mocks.useCatalogTasks.mockReturnValue({
+    mocks.useCatalogTopicTasks.mockReturnValue({
       tasks: [],
       loading: false,
       error: null,
-      toggleComplete: vi.fn(),
-      completedIds: new Set(),
+      filteredCount: 0,
     })
   })
 
@@ -75,11 +82,6 @@ describe('Catalog error states', () => {
   })
 
   it('shows a retryable error state on section page when topics fail', () => {
-    mocks.useCatalogSections.mockReturnValue({
-      sections: [{ id: 'sec-1', title: 'Раздел 1', subject: 'Математика', exam_type: 'ЕГЭ', external_id: 1, exam_number: 1, position: 1 }],
-      loading: false,
-      error: null,
-    })
     mocks.useCatalogTopics.mockReturnValue({
       topics: [],
       loading: false,
@@ -97,26 +99,20 @@ describe('Catalog error states', () => {
     expect(screen.getByText('Не удалось загрузить каталог')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
     expect(screen.getByText('topics failed')).toBeInTheDocument()
-    expect(mocks.useCatalogSections).toHaveBeenCalledWith('Математика', 'ЕГЭ', expect.any(Number))
+    expect(mocks.useCatalogSectionHeader).toHaveBeenCalledWith('sec-1', 'Математика', 'ЕГЭ', expect.any(Number))
+    expect(mocks.useCatalogSections).not.toHaveBeenCalled()
   })
 
   it('shows a retryable error state on topic page when tasks fail', () => {
-    mocks.useCatalogSections.mockReturnValue({
-      sections: [{ id: 'sec-1', title: 'Раздел 1', subject: 'Математика', exam_type: 'ЕГЭ', external_id: 1, exam_number: 1, position: 1 }],
-      loading: false,
-      error: null,
-    })
     mocks.useCatalogTopics.mockReturnValue({
       topics: [{ id: 'topic-1', title: 'Тема 1', external_id: 1, parent_id: null, slug: null, position: 1 }],
       loading: false,
       error: null,
     })
-    mocks.useCatalogTasks.mockReturnValue({
+    mocks.useCatalogTopicTasks.mockReturnValue({
       tasks: [],
       loading: false,
       error: 'tasks failed',
-      toggleComplete: vi.fn(),
-      completedIds: new Set(),
     })
 
     render(
@@ -130,11 +126,12 @@ describe('Catalog error states', () => {
     expect(screen.getByText('Не удалось загрузить каталог')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
     expect(screen.getByText('tasks failed')).toBeInTheDocument()
-    expect(mocks.useCatalogSections).toHaveBeenCalledWith('Математика', 'ЕГЭ', expect.any(Number))
+    expect(mocks.useCatalogSectionHeader).toHaveBeenCalledWith('sec-1', 'Математика', 'ЕГЭ', expect.any(Number))
+    expect(mocks.useCatalogSections).not.toHaveBeenCalled()
   })
 
   it('passes physics-topics view into hooks and preserves it in breadcrumbs', () => {
-    mocks.useCatalogSections.mockReturnValue({
+    mocks.useCatalogPhysicsTopicSections.mockReturnValue({
       sections: [{ id: 'sec-1', title: 'Механика', subject: 'Физика', exam_type: 'ЕГЭ', external_id: 1, exam_number: 1, position: 1 }],
       loading: false,
       error: null,
@@ -143,13 +140,6 @@ describe('Catalog error states', () => {
       topics: [{ id: 'topic-1', title: 'Кинематика', external_id: 1, parent_id: null, slug: null, position: 1 }],
       loading: false,
       error: null,
-    })
-    mocks.useCatalogTasks.mockReturnValue({
-      tasks: [],
-      loading: false,
-      error: null,
-      toggleComplete: vi.fn(),
-      completedIds: new Set(),
     })
 
     render(
@@ -160,8 +150,8 @@ describe('Catalog error states', () => {
       </MemoryRouter>,
     )
 
-    expect(mocks.useCatalogTasks).toHaveBeenCalledWith('topic-1', expect.any(Number), 'physics-topics')
-    expect(mocks.useCatalogSections).toHaveBeenCalledWith('Физика', 'ЕГЭ', expect.any(Number))
+    expect(mocks.useCatalogTopicTasks).toHaveBeenCalledWith('topic-1', expect.objectContaining({ view: 'physics-topics' }))
+    expect(mocks.useCatalogSectionHeader).toHaveBeenCalledWith(undefined, 'Физика', 'ЕГЭ', expect.any(Number))
     expect(mocks.useCatalogTopics).toHaveBeenCalledWith('sec-1', expect.any(Number), 'physics-topics', 'Физика', 'ЕГЭ')
 
     const catalogLink = screen.getByRole('link', { name: 'Каталог' })
@@ -171,11 +161,6 @@ describe('Catalog error states', () => {
   })
 
   it('shows a human error state for section search failures', () => {
-    mocks.useCatalogSections.mockReturnValue({
-      sections: [{ id: 'sec-1', title: 'Раздел 1', subject: 'Математика', exam_type: 'ЕГЭ', external_id: 1, exam_number: 1, position: 1 }],
-      loading: false,
-      error: null,
-    })
     mocks.useCatalogTopics.mockReturnValue({
       topics: [{ id: 'topic-1', title: 'Тема 1', external_id: 1, parent_id: null, slug: null, position: 1, task_count: 1, completed_count: 0 }],
       loading: false,

@@ -51,7 +51,7 @@ function SectionsView({ subjectSlug, examSlug, view }: { subjectSlug: string; ex
   const dirLabel  = direction?.label ?? `${subject} ${examType}`
 
   const [retryKey, setRetryKey] = useState(0)
-  const { sections, loading, error } = useCatalogSections(subject, examType, retryKey)
+  const { sections, loading, error } = useCatalogSections(subject, examType, retryKey, activeView === 'exam')
   const {
     sections: aiSections,
     totalTaskCount: aiTotalTaskCount,

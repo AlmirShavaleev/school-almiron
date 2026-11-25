@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { CheckCircle2, ChevronLeft, ChevronRight, BookOpen, Search, X, AlertCircle, RefreshCw } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useSectionLocked } from '@/lib/catalogLock'
+import { isCatalogLockedError } from '@/lib/catalogLock'
 import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
-import { useCatalogTopics, useCatalogSections, useCatalogSearch, SUBJECT_SLUGS, useCatalogPhysicsTopicSections, type CatalogViewMode, type CatalogSection } from '@/hooks/useCatalog'
+import { useCatalogTopics, useCatalogSectionHeader, useCatalogSearch, SUBJECT_SLUGS, useCatalogPhysicsTopicSections, type CatalogViewMode } from '@/hooks/useCatalog'
 import { useAuthStore } from '@/store/authStore'
 import { useCatalogPractice } from '@/hooks/useCatalogPractice'
 import { CatalogNumberProgress } from '@/components/catalog/CatalogNumberProgress'
@@ -22,11 +22,12 @@ export function CatalogSectionPage() {
   const examLabel = examSlug === 'ege' ? 'ЕГЭ' : 'ОГЭ'
   const [retryKey, setRetryKey] = useState(0)
   const { sections: aiSections, loading: aiSectionsLoading, error: aiSectionsError } = useCatalogPhysicsTopicSections(subjectSlug === 'physics' && examSlug === 'ege' && view === 'physics-topics', retryKey)
-  const { sections } = useCatalogSections(subjectLabel, examLabel, retryKey)
+  const { section: examSection, locked: sectionLocked, error: sectionError } = useCatalogSectionHeader(
+    view === 'exam' ? sectionId : undefined, subjectLabel, examLabel, retryKey,
+  )
   const { topics, loading, error } = useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)
   const { profile } = useAuthStore()
   const aiSection = aiSections.find(s => s.id === sectionId)
-  const examSection = sections.find(s => s.id === sectionId)
   const section = view === 'physics-topics' ? aiSection : examSection
   const backSlug = examSection ? (SUBJECT_SLUGS[examSection.subject] ?? subjectSlug) : subjectSlug
 
@@ -44,11 +45,9 @@ export function CatalogSectionPage() {
   // поиск не зависят от загрузки — сносить их вместе со списком значит
   // показывать пустой экран там, где половина содержимого уже известна.
   const listLoading = loading || (view === 'physics-topics' && aiSectionsLoading)
-  // §292: в разрезе «по темам ИИ» id — не раздел каталога, там не проверяем
-  const sectionLocked = useSectionLocked(view === 'exam' ? sectionId : null)
-  // §292: закрытый по подписке предмет по прямой ссылке — плашка, не пустой список и не ошибка
-  if (sectionLocked) return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
-  if (error || (view === 'physics-topics' && aiSectionsError)) return <ErrorState message={(error || aiSectionsError)!} onRetry={() => setRetryKey(key => key + 1)} />
+  const loadError = error || sectionError || (view === 'physics-topics' ? aiSectionsError : null)
+  if (sectionLocked || isCatalogLockedError(loadError)) return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
+  if (loadError) return <ErrorState message={loadError} onRetry={() => setRetryKey(key => key + 1)} />
 
   // Build topic tree (root topics + their children)
   const roots = topics.filter(t => t.parent_id === null || !topics.find(p => p.id === t.parent_id))

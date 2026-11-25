@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { physicsDifficultyByExternalId, getPhysicsDifficultyOrder, type PhysicsDifficulty } from '@/lib/physicsDifficulty'
@@ -695,6 +695,7 @@ async function loadCatalogSections(
   userId: string,
   subject?: string,
   examType?: string,
+  includeProgress = true,
 ): Promise<CatalogSection[]> {
   const sectionsQuery = (() => {
     let q = db.from('catalog_sections').select('*').eq('is_published', true)
@@ -709,14 +710,16 @@ async function loadCatalogSections(
       p_subject:   subject   ?? null,
       p_exam_type: examType  ?? null,
     }),
-    fetchAllPagedRows<{ task_id: string; catalog_tasks?: { section_id?: string } }>((from, to) =>
-      db
+    includeProgress ? fetchAllPagedRows<{ task_id: string; catalog_tasks?: { section_id?: string } }>((from, to) => {
+      let q = db
         .from('catalog_task_progress')
         .select('task_id, catalog_tasks!inner(section_id)')
         .eq('user_id', userId)
         .eq('is_completed', true)
-        .range(from, to)
-    ),
+      if (subject) q = q.eq('catalog_tasks.subject', subject)
+      if (examType) q = q.eq('catalog_tasks.exam_type', examType)
+      return q.order('task_id').range(from, to)
+    }) : [],
   ])
 
   if (sectionsRes.error) throw new Error(sectionsRes.error.message ?? 'Не удалось загрузить каталог')
@@ -751,20 +754,54 @@ async function loadCatalogSections(
   }))
 }
 
-export function useCatalogSections(subject?: string, examType?: string, _retryKey?: number) {
+function catalogSectionsKey(userId?: string, subject?: string, examType?: string, retryKey = 0, role?: string) {
+  return ['catalog-sections', userId ?? 'anon', subject ?? 'all', examType ?? 'all', retryKey, role ?? ''] as const
+}
+
+export function useCatalogSections(subject?: string, examType?: string, _retryKey?: number, enabled = true) {
   const { profile } = useAuthStore()
   const query = useQuery({
-    queryKey: ['catalog-sections', profile?.id ?? 'anon', subject ?? 'all', examType ?? 'all', _retryKey ?? 0] as const,
-    enabled: Boolean(profile?.id),
+    queryKey: catalogSectionsKey(profile?.id, subject, examType, _retryKey, profile?.role),
+    enabled: enabled && Boolean(profile?.id),
     staleTime: CATALOG_STRUCTURE_CACHE_MS,
     gcTime: CATALOG_STRUCTURE_CACHE_MS * 6,
-    queryFn: () => loadCatalogSections(profile!.id, subject, examType),
+    queryFn: () => loadCatalogSections(profile!.id, subject, examType, profile?.role === 'student'),
   })
 
   return {
     sections: query.data ?? [],
     loading: query.isLoading,
     error: query.error instanceof Error ? query.error.message : query.error ? 'Не удалось загрузить каталог' : null,
+  }
+}
+
+type SectionHeader = Pick<CatalogSection, 'id' | 'title' | 'subject' | 'exam_number'>
+
+export function useCatalogSectionHeader(sectionId?: string, subject?: string, examType?: string, retryKey = 0) {
+  const { profile } = useAuthStore()
+  const queryClient = useQueryClient()
+  const sectionsKey = catalogSectionsKey(profile?.id, subject, examType, 0, profile?.role)
+  const query = useQuery({
+    queryKey: ['catalog-section-header', profile?.id, profile?.role, sectionId, retryKey],
+    enabled: Boolean(profile?.id && sectionId),
+    staleTime: CATALOG_STRUCTURE_CACHE_MS,
+    initialData: () => retryKey === 0
+      ? queryClient.getQueryData<CatalogSection[]>(sectionsKey)?.find(section => section.id === sectionId)
+      : undefined,
+    initialDataUpdatedAt: () => queryClient.getQueryState(sectionsKey)?.dataUpdatedAt,
+    queryFn: async (): Promise<SectionHeader | null> => {
+      // Видимость опубликованной строки уже ограничена подпиской в RLS.
+      const { data, error } = await db.from('catalog_sections')
+        .select('id,title,subject,exam_number').eq('id', sectionId).eq('is_published', true).maybeSingle()
+      if (error) throw new Error(error.message ?? 'Не удалось загрузить раздел')
+      return data
+    },
+  })
+
+  return {
+    section: query.data,
+    locked: query.data === null,
+    error: query.error instanceof Error ? query.error.message : null,
   }
 }
 
@@ -1155,6 +1192,127 @@ export function useCatalogSearch(query: string, sectionId: string | undefined, e
 
 // ── Tasks for a topic ─────────────────────────────────────────────────────────
 
+type TopicTaskIndexRow = Pick<CatalogTask, 'id' | 'position' | 'external_id' | 'difficulty'> & {
+  completed: { task_id: string }[]
+}
+
+type TopicTaskIndexEntry = Omit<TopicTaskIndexRow, 'completed'> & { done: boolean }
+type TopicTaskOptions = {
+  view: CatalogViewMode
+  retryKey: number
+  filter: 'all' | 'done' | 'todo'
+  difficulties: ReadonlySet<PhysicsDifficulty>
+  pageSize: number
+  visibleCount: number
+}
+
+async function loadTopicTaskIndex(topicId: string, userId: string, view: CatalogViewMode, signal: AbortSignal) {
+  // Индекс нужен для точных счётчиков и фильтров по всей теме. Тяжёлые поля
+  // задач и иллюстрации запрашиваются отдельно только для видимых порций.
+  const rows = await fetchAllPagedRows<TopicTaskIndexRow>((from, to) => {
+    let query = db.from('catalog_tasks')
+      .select('id,position,external_id,difficulty,links:catalog_task_topics!inner(topic_id),completed:catalog_task_progress(task_id)')
+      .eq('is_published', true)
+      .eq('links.topic_id', topicId)
+      .eq('completed.user_id', userId)
+      .eq('completed.is_completed', true)
+      .order('position')
+      .order('id')
+    if (view === 'physics-topics') query = query.eq('links.source', AI_PHYSICS_SOURCE).eq('links.is_primary', true)
+    return query.range(from, to).abortSignal(signal)
+  })
+
+  if (view === 'physics-topics') {
+    rows.sort((a, b) =>
+      getPhysicsDifficultyOrder(a.difficulty) - getPhysicsDifficultyOrder(b.difficulty)
+      || a.position - b.position
+      || a.external_id - b.external_id,
+    )
+  }
+  return rows.map(({ completed, ...task }): TopicTaskIndexEntry => ({ ...task, done: completed.length > 0 }))
+}
+
+async function loadTopicTaskPage(ids: string[], signal: AbortSignal): Promise<CatalogTask[]> {
+  const [rows, texts] = await Promise.all([
+    db.from('catalog_tasks')
+      .select(`${TASK_ROW_SELECT},assets:catalog_task_assets(id,tex_session_id,kind,storage_path,alt,position)`)
+      .eq('is_published', true)
+      .in('id', ids)
+      .order('position', { referencedTable: 'assets' })
+      .abortSignal(signal),
+    fetchCatalogTaskTexts(ids),
+  ])
+  if (rows.error) throw new Error(rows.error.message ?? 'Не удалось загрузить задачи')
+  return ((rows.data ?? []) as CatalogTask[]).map(task => applyTaskTexts(task, texts.get(task.id)))
+}
+
+export function useCatalogTopicTasks(topicId: string | undefined, options: TopicTaskOptions) {
+  const { profile } = useAuthStore()
+  const queryClient = useQueryClient()
+  const { view, retryKey, filter, difficulties, pageSize, visibleCount } = options
+  const userId = profile?.id
+  const key = ['catalog-topic-task-index', userId, topicId, view, retryKey, profile?.role] as const
+  const index = useQuery({
+    queryKey: key,
+    enabled: Boolean(userId && topicId),
+    staleTime: CATALOG_STRUCTURE_CACHE_MS,
+    queryFn: ({ signal }) => loadTopicTaskIndex(topicId!, userId!, view, signal),
+  })
+  const filtered = useMemo(() => (index.data ?? []).filter(task => {
+    if ((filter === 'done' && !task.done) || (filter === 'todo' && task.done)) return false
+    return !difficulties.size || (task.difficulty != null && difficulties.has(task.difficulty))
+  }), [index.data, filter, difficulties])
+  const visible = filtered.slice(0, visibleCount)
+  const idsByPage = chunk(visible.map(task => task.id), pageSize)
+  const pages = useQueries({
+    queries: idsByPage.map(ids => ({
+      queryKey: ['catalog-topic-task-page', userId, profile?.role, retryKey, ids] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) => loadTopicTaskPage(ids, signal),
+      staleTime: CATALOG_STRUCTURE_CACHE_MS,
+    })),
+  })
+
+  const syncCompletion = (taskId: string, done: boolean) => {
+    if (!userId) return
+    // Одна задача может встречаться в нескольких темах.
+    queryClient.setQueriesData<TopicTaskIndexEntry[]>({ queryKey: ['catalog-topic-task-index', userId] }, rows =>
+      rows?.map(task => task.id === taskId ? { ...task, done } : task),
+    )
+    void queryClient.invalidateQueries({ queryKey: ['catalog-sections', userId], refetchType: 'none' })
+    void queryClient.invalidateQueries({ queryKey: ['catalog-section-topic-tree', userId] })
+    void queryClient.invalidateQueries({ queryKey: ['catalog-physics-section-topics', userId] })
+    void queryClient.invalidateQueries({ queryKey: ['catalog-physics-topic-sections', userId], refetchType: 'none' })
+  }
+
+  const toggleComplete = async (taskId: string, currentlyDone: boolean) => {
+    if (!userId) return
+    const query = db.from('catalog_task_progress')
+    const { error } = currentlyDone
+      ? await query.delete().eq('user_id', userId).eq('task_id', taskId)
+      : await query.upsert({ user_id: userId, task_id: taskId, is_completed: true, completed_at: new Date().toISOString() })
+    if (error) throw new Error(error.message ?? 'Не удалось сохранить отметку')
+    syncCompletion(taskId, !currentlyDone)
+  }
+
+  const loadedTasks = new Map(pages.flatMap(page => (page.data ?? []).map(task => [task.id, task] as const)))
+  const tasks = visible.flatMap(row => {
+    const task = loadedTasks.get(row.id)
+    return task ? [{ ...task, is_completed: row.done }] : []
+  })
+  const error = index.error ?? pages.find(page => page.error)?.error
+  return {
+    tasks,
+    loading: index.isLoading || Boolean(pages[0]?.isLoading),
+    loadingMore: Boolean(pages.slice(1).some(page => page.isLoading)),
+    error: error instanceof Error ? error.message : null,
+    totalCount: index.data?.length ?? 0,
+    doneCount: index.data?.filter(task => task.done).length ?? 0,
+    filteredCount: filtered.length,
+    syncCompletion,
+    toggleComplete,
+  }
+}
+
 export function useCatalogTasks(topicId: string | undefined, _retryKey?: number, view: CatalogViewMode = 'exam') {
   const { profile } = useAuthStore()
   const queryKey = getCatalogPhysicsQueryKeys(profile?.id, _retryKey, undefined, topicId)
@@ -1330,6 +1488,7 @@ export function useCatalogPhysicsTaskTopicEditor(taskId: string | undefined, top
       queryClient.invalidateQueries({ queryKey: ['catalog-physics-topic-sections', profile?.id ?? 'anon'] }),
       queryClient.invalidateQueries({ queryKey: ['catalog-physics-section-topics', profile?.id ?? 'anon'] }),
       queryClient.invalidateQueries({ queryKey: ['catalog-physics-topic-tasks', profile?.id ?? 'anon'] }),
+      queryClient.invalidateQueries({ queryKey: ['catalog-topic-task-index', profile?.id] }),
       queryClient.invalidateQueries({ queryKey: keys.sections }),
       queryClient.invalidateQueries({ queryKey: keys.sectionTopics }),
       queryClient.invalidateQueries({ queryKey: keys.topicTasks }),

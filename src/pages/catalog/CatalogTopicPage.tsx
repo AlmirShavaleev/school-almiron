@@ -1,12 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
-import { useSectionLocked } from '@/lib/catalogLock'
+import { isCatalogLockedError } from '@/lib/catalogLock'
 import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
 import { ChevronLeft, CheckCircle2, BookOpen, AlertCircle, RefreshCw, Sparkles, ChevronDown } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 
-const PAGE_SIZE = 25
-import { useCatalogTasks, useCatalogTopics, useCatalogSections, useCatalogPhysicsTopicSections, SUBJECT_SLUGS, type CatalogTask, type CatalogViewMode } from '@/hooks/useCatalog'
+import { useCatalogTopicTasks, useCatalogTopics, useCatalogSectionHeader, useCatalogPhysicsTopicSections, SUBJECT_SLUGS, type CatalogTask, type CatalogViewMode } from '@/hooks/useCatalog'
 import { AddToCartButton } from '@/components/catalog/AddToCartButton'
 import { CartBadge } from '@/components/catalog/CartBadge'
 import { PhysicsTopicEditorButton } from '@/components/catalog/PhysicsTopicEditorButton'
@@ -14,6 +13,9 @@ import { TaskDisplayCard, type TaskPracticeProps } from '@/components/catalog/Ta
 import { CatalogNumberProgress } from '@/components/catalog/CatalogNumberProgress'
 import { useCatalogPractice } from '@/hooks/useCatalogPractice'
 import type { PhysicsDifficulty } from '@/lib/physicsDifficulty'
+import { toast } from '@/store/toastStore'
+
+const PAGE_SIZE = 25
 
 /** §256: состояние практики спрашиваем не больше чем для стольких задач. */
 const PRACTICE_IDS_MAX = 300
@@ -36,13 +38,12 @@ export function CatalogTopicPage() {
   const isPhysicsTopicsView = subjectSlugParam === 'physics' && examSlug === 'ege' && view === 'physics-topics'
   const canEditPhysicsTopics = isPhysicsTopicsView && !!profile?.role && ['admin', 'owner'].includes(profile.role)
 
-  const { tasks, loading, error, toggleComplete } = useCatalogTasks(topicId, retryKey, view)
   const { sections: aiSections } = useCatalogPhysicsTopicSections(isPhysicsTopicsView, retryKey)
-  const { sections } = useCatalogSections(subjectLabel, examLabel, retryKey)
-  const examSection = sections.find(s => s.id === sectionId)
+  const { section: examSection, locked: sectionLocked, error: sectionError } = useCatalogSectionHeader(
+    isPhysicsTopicsView ? undefined : sectionId, subjectLabel, examLabel, retryKey,
+  )
   const aiSection = aiSections.find(s => s.id === sectionId)
-  const sectionLocked = useSectionLocked(isPhysicsTopicsView ? null : sectionId)
-  const { topics } = useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)
+  const { topics, error: topicsError } = useCatalogTopics(sectionId, retryKey, view, subjectLabel, examLabel)
 
   const topic   = topics.find(t => t.id === topicId)
   const sectionTitle = aiSection?.title ?? examSection?.title ?? 'Раздел'
@@ -56,24 +57,17 @@ export function CatalogTopicPage() {
     return next
   })
 
-  const filtered = useMemo(() => {
-    const byCompletion =
-      filter === 'done' ? tasks.filter(t => t.is_completed)
-      : filter === 'todo' ? tasks.filter(t => !t.is_completed)
-      : tasks
-
-    if (difficultyFilter.size === 0) return byCompletion
-    return byCompletion.filter(task => task.difficulty && difficultyFilter.has(task.difficulty))
-  }, [tasks, filter, difficultyFilter])
-
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
-
-  // Reset pagination when topic or filter changes
-  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [topicId, filter])
-  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [difficultyFilter])
-
-  const visibleTasks = filtered.slice(0, visibleCount)
-  const hasMore = visibleCount < filtered.length
+  const pageKey = JSON.stringify([topicId, view, filter, [...difficultyFilter].sort()])
+  const [pagination, setPagination] = useState({ key: pageKey, count: PAGE_SIZE })
+  if (pagination.key !== pageKey) setPagination({ key: pageKey, count: PAGE_SIZE })
+  const visibleCount = pagination.key === pageKey ? pagination.count : PAGE_SIZE
+  const {
+    tasks: visibleTasks, totalCount, doneCount, filteredCount, loading, loadingMore, error,
+    toggleComplete, syncCompletion,
+  } = useCatalogTopicTasks(sectionLocked ? undefined : topicId, {
+    view, retryKey, filter, difficulties: difficultyFilter, pageSize: PAGE_SIZE, visibleCount,
+  })
+  const hasMore = visibleCount < filteredCount
 
   // §256. Ученик проверяет ответ прямо в карточке; персоналу — как прежде.
   const isStudent = profile?.role === 'student'
@@ -85,10 +79,8 @@ export function CatalogTopicPage() {
           state: practice.state.tasks[taskId],
           onCheck: async answer => {
             const out = await practice.check(taskId, answer)
-            // База уже отметила решённую задачу «Выполнено» — показываем это сразу
-            // (повторная отметка — тот же upsert, без вреда).
-            const t = tasks.find(x => x.id === taskId)
-            if (out.result?.verdict === 'correct' && t && !t.is_completed) void toggleComplete(taskId, false)
+            const task = visibleTasks.find(item => item.id === taskId)
+            if (out.result?.verdict === 'correct' && task && !task.is_completed) syncCompletion(taskId, true)
             return out
           },
           onReveal: () => practice.reveal(taskId),
@@ -96,8 +88,6 @@ export function CatalogTopicPage() {
       : undefined
   )
 
-  const doneCount  = tasks.filter(t => t.is_completed).length
-  const totalCount = tasks.length
   const pct = totalCount ? Math.round(doneCount / totalCount * 100) : 0
 
   // Скелет накрывает ТОЛЬКО список задач, а не всю страницу. Раньше при
@@ -105,8 +95,11 @@ export function CatalogTopicPage() {
   // и фильтры — то есть ровно то, что не менялось. На четыре секунды это
   // выглядело как поломка, хотя менялся один блок.
   // §292: закрытый по подписке предмет по прямой ссылке — плашка, не пустой список и не ошибка
-  if (sectionLocked) return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
-  if (error) return <ErrorState message={error} onRetry={() => setRetryKey(key => key + 1)} />
+  if (sectionLocked || isCatalogLockedError(error || sectionError || topicsError)) {
+    return <div className="mx-auto max-w-3xl"><CatalogLockedNotice /></div>
+  }
+  const loadError = error || sectionError
+  if (loadError) return <ErrorState message={loadError} onRetry={() => setRetryKey(key => key + 1)} />
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -258,7 +251,7 @@ export function CatalogTopicPage() {
           <div>
             {loading ? (
               <TaskListSkeleton />
-            ) : filtered.length === 0 ? (
+            ) : filteredCount === 0 ? (
               <EmptyState filter={filter} hasDifficultyFilter={difficultyFilter.size > 0} />
             ) : (
               <div className="space-y-4">
@@ -268,7 +261,9 @@ export function CatalogTopicPage() {
                     task={task}
                     number={idx + 1}
                     practice={practiceFor(task.id)}
-                    onToggle={() => toggleComplete(task.id, !!task.is_completed)}
+                    onToggle={() => {
+                      void toggleComplete(task.id, !!task.is_completed).catch(() => toast.error('Не удалось сохранить отметку'))
+                    }}
                     canEditPhysicsTopics={canEditPhysicsTopics}
                     topicId={topicId}
                     sectionId={sectionId}
@@ -276,13 +271,14 @@ export function CatalogTopicPage() {
                     examNumber={examSection?.exam_number ?? null}
                   />
                 ))}
-                {hasMore && (
+                {(hasMore || loadingMore) && (
                   <button
-                    onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                    onClick={() => setPagination({ key: pageKey, count: visibleCount + PAGE_SIZE })}
+                    disabled={loadingMore}
                     className="w-full rounded-2xl border border-gray-200 py-3 text-sm font-medium text-gray-600 transition-[background-color,color,border-color,transform] hover:bg-gray-50 hover:border-primary-400 hover:text-primary-700 active:scale-[0.99]"
                   >
-                    Показать ещё {Math.min(PAGE_SIZE, filtered.length - visibleCount)} задач
-                    <span className="ml-1 text-gray-400 tabular-nums">({visibleCount} из {filtered.length})</span>
+                    {loadingMore ? 'Загрузка…' : `Показать ещё ${Math.min(PAGE_SIZE, filteredCount - visibleCount)} задач`}
+                    <span className="ml-1 text-gray-400 tabular-nums">({visibleTasks.length} из {filteredCount})</span>
                   </button>
                 )}
               </div>

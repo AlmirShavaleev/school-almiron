@@ -1,9 +1,8 @@
 /**
  * §292 (применена на сервере 16.10): банк задач открыт по предмету подписки.
- * Закрыт ли раздел или задача — решает база (`catalog_section_allowed`,
- * `catalog_tasks_allowed`, `catalog_my_overview.exams[].locked`), здесь — только
- * чтение ответа. Сбой (нет функции, нет сети) = «открыто»: прежнее поведение,
- * а закрытое всё равно не отдадут RLS и функции.
+ * Видимость раздела проверяет RLS при чтении заголовка. Для отдельной задачи
+ * читаем `catalog_tasks_allowed`. При сбое RPC доступ к данным всё так же
+ * проверяют RLS и функции каталога.
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -27,20 +26,6 @@ async function allowed(fn: string, args: Record<string, unknown>): Promise<boole
   } catch {
     return true
   }
-}
-
-/** Закрыт ли раздел (страницы раздела и темы по прямой ссылке). null — ещё не знаем. */
-export function useSectionLocked(sectionId: string | null | undefined): boolean | null {
-  const [got, setGot] = useState<{ id: string; locked: boolean } | null>(null)
-  useEffect(() => {
-    if (!sectionId) return
-    let alive = true
-    allowed('catalog_section_allowed', { p_section_id: sectionId }).then((ok) => { if (alive) setGot({ id: sectionId, locked: !ok }) })
-    return () => {
-      alive = false
-    }
-  }, [sectionId])
-  return got && got.id === sectionId ? got.locked : null
 }
 
 /** Закрыта ли задача (страница задачи по прямой ссылке). */

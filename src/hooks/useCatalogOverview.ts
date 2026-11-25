@@ -3,66 +3,75 @@ import { supabase } from '@/lib/supabase'
 import { normalizeCatalogOverview, type CatalogOverview } from '@/lib/catalogOverview'
 import { isCatalogLockedError } from '@/lib/catalogLock'
 
-/**
- * §246. Главная каталога одним вызовом `catalog_my_overview()`.
- *
- * Перечитывается при каждом заходе на страницу (без кэша): ученик отмечает
- * задачу «Выполнено» внутри номера и возвращается сюда — столбик обязан
- * вырасти сразу.
- *
- * Ошибка (в том числе «функции нет», если фронт приедет раньше миграции) не
- * роняет страницу: `overview` остаётся null, экран предлагает повторить.
- * Список направлений до проверки доступа не показывается.
- */
-
 type Res<T> = { data: T | null; error: { message?: string; hint?: string | null } | null }
 interface RpcLike { rpc?: <T = unknown>(fn: string, args?: Record<string, unknown>) => PromiseLike<Res<T>> }
 
-export function useCatalogOverview(userId: string | null | undefined) {
-  const [overview, setOverview] = useState<CatalogOverview | null>(null)
-  const [loading, setLoading] = useState(Boolean(userId))
-  const [error, setError] = useState<string | null>(null)
-  // §292: закрыто всё (нет подписки ни на один предмет) — плашка, не ошибка
-  const [locked, setLocked] = useState(false)
+type State = {
+  directions: string[]
+  overview: CatalogOverview | null
+  loading: boolean
+  error: string | null
+  locked: boolean
+}
+
+const EMPTY: State = { directions: [], overview: null, loading: false, error: null, locked: false }
+const LOADING: State = { ...EMPTY, loading: true }
+const LOCKED: State = { ...EMPTY, locked: true }
+
+export function useCatalogOverview(userId: string | null | undefined, role?: string) {
   const [attempt, setAttempt] = useState(0)
+  const key = userId ? `${userId}|${role ?? ''}|${attempt}` : null
+  const [result, setResult] = useState<{ key: string; state: State } | null>(null)
   const retry = useCallback(() => setAttempt(a => a + 1), [])
 
   useEffect(() => {
+    if (!key) return
     let cancelled = false
+    const update = (state: State) => {
+      if (!cancelled) setResult({ key, state })
+    }
+
     async function load() {
-      // Состояние меняется только после await: вызов setState прямо в теле
-      // эффекта даёт лишний каскадный рендер (react-hooks/set-state-in-effect).
-      await Promise.resolve()
-      if (cancelled) return
-      if (!userId) {
-        setOverview(null)
-        setLoading(false)
-        return
-      }
-      setLoading(true)
-      setError(null)
-      setLocked(false)
+      let directions: string[] = []
       try {
         const db = supabase as unknown as RpcLike
         if (typeof db.rpc !== 'function') throw new Error('rpc недоступен')
+
+        const access = await db.rpc<unknown>('catalog_subscription_directions', {})
+        if (cancelled) return
+        if (isCatalogLockedError(access.error)) {
+          update(LOCKED)
+          return
+        }
+        if (access.error) throw new Error(access.error.message ?? 'Не удалось проверить доступ')
+        if (!Array.isArray(access.data) || !access.data.every(item => typeof item === 'string')) {
+          throw new Error('Не удалось проверить доступ')
+        }
+        directions = access.data
+        if (directions.length === 0) {
+          update(LOCKED)
+          return
+        }
+        update({ ...LOADING, directions })
+
+        // Прогресс читается при каждом открытии, чтобы сразу учесть новые отметки.
         const { data, error: err } = await db.rpc<unknown>('catalog_my_overview', {})
-        if (cancelled) return
-        if (isCatalogLockedError(err)) { setOverview(null); setLocked(true); return }
+        if (isCatalogLockedError(err)) {
+          update(LOCKED)
+          return
+        }
         if (err) throw new Error(err.message ?? 'Не удалось загрузить статистику')
-        const parsed = normalizeCatalogOverview(data)
-        if (!parsed) throw new Error('Пустой ответ')
-        setOverview(parsed)
+        const overview = normalizeCatalogOverview(data)
+        if (!overview) throw new Error('Пустой ответ')
+        update({ ...EMPTY, directions, overview })
       } catch (e) {
-        if (cancelled) return
-        setOverview(null)
-        setError(e instanceof Error ? e.message : 'Не удалось загрузить статистику')
-      } finally {
-        if (!cancelled) setLoading(false)
+        update({ ...EMPTY, directions, error: e instanceof Error ? e.message : 'Не удалось загрузить каталог' })
       }
     }
     void load()
     return () => { cancelled = true }
-  }, [userId, attempt])
+  }, [key])
 
-  return { overview, loading, error, locked, retry }
+  const state = key ? (result?.key === key ? result.state : LOADING) : EMPTY
+  return { ...state, retry }
 }

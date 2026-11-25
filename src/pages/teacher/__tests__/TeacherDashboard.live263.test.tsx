@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { EMPTY_HOME } from '@/lib/teacherHome'
 
 /**
  * §263. Главная учителя: пока окно проверочной/контрольной идёт — блок
@@ -11,7 +10,10 @@ import { EMPTY_HOME } from '@/lib/teacherHome'
 const live = vi.hoisted(() => ({ data: null as unknown, error: null as null | { message: string } }))
 vi.mock('@/lib/safeRpc', () => ({ safeRpc: vi.fn(async () => ({ data: live.data, error: live.error })) }))
 vi.mock('@/hooks/useTeacherHome', () => ({
-  useTeacherHome: () => ({ pending: [], home: { ...EMPTY_HOME, today: '2026-10-03' }, loading: false, error: null, reload: vi.fn(), remind: vi.fn() }),
+  useTeacherHome: () => ({ home: null, today: '2026-10-03', loading: false, error: null, reload: vi.fn(), courseIds: null }),
+}))
+vi.mock('@/hooks/useTeacherActivity', () => ({
+  useTeacherActivity: () => ({ data: null, loading: false, failed: false, reload: vi.fn() }),
 }))
 
 import { TeacherDashboard } from '@/pages/teacher/TeacherDashboard'

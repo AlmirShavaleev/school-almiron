@@ -4,12 +4,13 @@ import { Lock, RefreshCw } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
 import { useCatalogOverview } from '@/hooks/useCatalogOverview'
+import { ALL_SUBJECTS, DIRECTIONS } from '@/hooks/useCatalog'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { CATALOG_SUBSCRIBE_HREF } from '@/lib/catalogLock'
 import { CatalogLockedNotice } from '@/components/catalog/CatalogLockedNotice'
 import {
   examBars, examChips, examHref, examSubtitle, formatCount, isDimmed, numberRange, overallRank,
-  solvedCaption, subjectRows, subjectTone, summaryChips, summaryState, tasksWord,
+  solvedCaption, subjectGlyph, subjectRows, subjectTone, summaryChips, summaryState,
   BAR_MAX_PX,
   type CatalogOverview, type Chip, type OverviewExam, type SubjectTone,
 } from '@/lib/catalogOverview'
@@ -58,7 +59,7 @@ const CHIP: Record<Chip['tone'], string> = {
 
 export function CatalogHome() {
   const { profile } = useAuthStore()
-  const { overview, loading, error, locked, retry } = useCatalogOverview(profile?.id)
+  const { directions = [], overview, loading, error, locked, retry } = useCatalogOverview(profile?.id, profile?.role)
 
   return (
     <div className="mx-auto max-w-[1180px] space-y-6" data-testid="catalog-home">
@@ -83,7 +84,7 @@ export function CatalogHome() {
           {loading && <SummarySkeleton />}
           {error && !loading && (
             <div role="status" data-testid="catalog-home-error" className="flex flex-wrap items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
-              <span>Не удалось загрузить доступные разделы каталога. Попробуйте ещё раз.</span>
+              <span>{directions.length ? 'Не удалось загрузить статистику каталога.' : 'Не удалось загрузить доступные разделы каталога. Попробуйте ещё раз.'}</span>
               <button
                 type="button"
                 onClick={retry}
@@ -95,6 +96,36 @@ export function CatalogHome() {
             </div>
           )}
 
+          {ALL_SUBJECTS.map(subject => {
+            const exams = DIRECTIONS.filter(exam => exam.subject === subject && directions.includes(`${subject}|${exam.examType}`))
+            if (!exams.length) return null
+            const tone = subjectTone(subject)
+            return (
+              <SubjectBlock key={subject} subject={subject} tone={tone} glyph={subjectGlyph(subject)} solved={0}>
+                {exams.map(exam => (
+                  <article
+                    key={exam.key}
+                    data-testid="exam-card"
+                    data-exam={exam.label}
+                    className={cn('relative grid gap-3.5 rounded-card border border-gray-200 bg-white px-[18px] pb-3.5 pt-[18px]', TONE_HOVER[tone])}
+                  >
+                    <ExamHead subject={subject} examType={exam.examType}>
+                      {loading && <div aria-hidden="true" className="h-8 w-16 animate-pulse rounded-lg bg-gray-100" />}
+                    </ExamHead>
+                    {loading && <div aria-hidden="true" className="h-[92px] animate-pulse rounded-lg bg-gray-50" />}
+                    <Link
+                      to={examHref(subject, exam.examType)}
+                      aria-label={`Открыть: ${exam.label}`}
+                      className="flex items-center justify-between border-t border-gray-200 pt-2.5 text-sm font-bold text-gray-900 after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary-400"
+                    >
+                      Открыть задания
+                      <span aria-hidden="true" className={TONE_GO[tone]}>→</span>
+                    </Link>
+                  </article>
+                ))}
+              </SubjectBlock>
+            )
+          })}
         </>
       )}
     </div>

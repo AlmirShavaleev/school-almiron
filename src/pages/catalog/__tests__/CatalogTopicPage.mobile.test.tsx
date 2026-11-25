@@ -3,17 +3,17 @@ import { render } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 const mocks = vi.hoisted(() => ({
-  useCatalogSections: vi.fn(),
+  useCatalogSectionHeader: vi.fn(),
   useCatalogTopics: vi.fn(),
   useCatalogPhysicsTopicSections: vi.fn(),
-  useCatalogTasks: vi.fn(),
+  useCatalogTopicTasks: vi.fn(),
 }))
 
 vi.mock('@/hooks/useCatalog', () => ({
-  useCatalogSections: (...args: unknown[]) => mocks.useCatalogSections(...args),
+  useCatalogSectionHeader: (...args: unknown[]) => mocks.useCatalogSectionHeader(...args),
   useCatalogTopics: (...args: unknown[]) => mocks.useCatalogTopics(...args),
   useCatalogPhysicsTopicSections: (...args: unknown[]) => mocks.useCatalogPhysicsTopicSections(...args),
-  useCatalogTasks: (...args: unknown[]) => mocks.useCatalogTasks(...args),
+  useCatalogTopicTasks: (...args: unknown[]) => mocks.useCatalogTopicTasks(...args),
   SUBJECT_SLUGS: { 'Математика': 'math', 'Физика': 'physics' },
   SUBJECT_FROM_SLUG: { math: 'Математика', physics: 'Физика' },
   EXAM_FROM_SLUG: { ege: 'ЕГЭ', oge: 'ОГЭ' },
@@ -58,10 +58,10 @@ describe('CatalogTopicPage — ширина на телефоне', () => {
     vi.clearAllMocks()
     // jsdom не умеет scrollIntoView — страница вызывает его для активной темы
     Element.prototype.scrollIntoView = vi.fn()
-    mocks.useCatalogSections.mockReturnValue({ sections: [{ id: 's1', title: 'Кинематика', exam_number: 1 }], loading: false, error: null })
+    mocks.useCatalogSectionHeader.mockReturnValue({ section: { id: 's1', title: 'Кинематика', exam_number: 1 }, locked: false, error: null })
     mocks.useCatalogTopics.mockReturnValue({ topics, loading: false, error: null })
     mocks.useCatalogPhysicsTopicSections.mockReturnValue({ sections: [], loading: false, error: null })
-    mocks.useCatalogTasks.mockReturnValue({ tasks: [], loading: false, error: null, toggleComplete: vi.fn() })
+    mocks.useCatalogTopicTasks.mockReturnValue({ tasks: [], loading: false, error: null, filteredCount: 0 })
   })
 
   it('колонка задач — грид-элемент с min-w-0', () => {

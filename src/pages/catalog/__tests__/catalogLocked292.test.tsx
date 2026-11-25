@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   useCatalogTopics: vi.fn(),
   useCatalogPhysicsTopicSections: vi.fn(),
   useCatalogSearch: vi.fn(),
-  useCatalogTasks: vi.fn(),
+  useCatalogTopicTasks: vi.fn(),
   useCatalogTask: vi.fn(),
   locked: { section: false as boolean | null, task: false as boolean | null },
 }))
@@ -21,15 +21,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/hooks/useCatalog', async (orig) => ({
   ...(await orig<object>()),
   useCatalogSections: (...a: unknown[]) => mocks.useCatalogSections(...a),
+  useCatalogSectionHeader: () => ({ section: null, locked: mocks.locked.section, error: null }),
   useCatalogTopics: (...a: unknown[]) => mocks.useCatalogTopics(...a),
   useCatalogPhysicsTopicSections: (...a: unknown[]) => mocks.useCatalogPhysicsTopicSections(...a),
   useCatalogSearch: (...a: unknown[]) => mocks.useCatalogSearch(...a),
-  useCatalogTasks: (...a: unknown[]) => mocks.useCatalogTasks(...a),
+  useCatalogTopicTasks: (...a: unknown[]) => mocks.useCatalogTopicTasks(...a),
   useCatalogTask: (...a: unknown[]) => mocks.useCatalogTask(...a),
 }))
 vi.mock('@/lib/catalogLock', async (orig) => ({
   ...(await orig<object>()),
-  useSectionLocked: () => mocks.locked.section,
   useTaskLocked: () => mocks.locked.task,
 }))
 vi.mock('@/hooks/useCatalogPractice', () => ({
@@ -70,7 +70,7 @@ beforeEach(() => {
   mocks.useCatalogTopics.mockReturnValue({ topics: [], loading: false, error: null })
   mocks.useCatalogPhysicsTopicSections.mockReturnValue({ sections: [], loading: false, error: null })
   mocks.useCatalogSearch.mockReturnValue({ results: [], loading: false, error: null })
-  mocks.useCatalogTasks.mockReturnValue({ tasks: [], loading: false, error: null, toggleComplete: vi.fn(), completedIds: new Set() })
+  mocks.useCatalogTopicTasks.mockReturnValue({ tasks: [], loading: false, error: null, filteredCount: 0 })
   mocks.useCatalogTask.mockReturnValue({ task: null, loading: false, error: null })
 })
 

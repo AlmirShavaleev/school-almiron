@@ -225,6 +225,22 @@ export function notifyCheckedIds(rows: WorkRow[]): string[] {
 
 export type ExamStage = 'draft' | 'scheduled' | 'running' | 'checking' | 'sent'
 
+export interface ExamListProgress {
+  window: ExamWindow
+  hasWork: boolean
+  allChecked: boolean
+}
+
+export type ExamListStatus = 'draft' | 'upcoming' | 'running' | 'photos' | 'waiting' | 'checked' | 'empty'
+
+export function examListStatus(progress: ExamListProgress, now: number): ExamListStatus {
+  const phase = livePhase(progress.window, now)
+  if (phase !== 'ended') return phase
+  if (progress.allChecked) return 'checked'
+  if (progress.hasWork) return 'waiting'
+  return progress.window.starts_at ? 'empty' : 'draft'
+}
+
 export const STAGES: { key: ExamStage; label: string }[] = [
   { key: 'draft', label: 'Черновик' },
   { key: 'scheduled', label: 'Назначен' },

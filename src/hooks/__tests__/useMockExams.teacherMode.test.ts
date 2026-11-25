@@ -29,6 +29,7 @@ let scope: TeachingScope
 /** Группы, которые RLS отдаёт вызывающему. */
 let visibleGroups: Set<string>
 let queries: { select: string; filters: [string, string, unknown][] }[]
+let examFields: Record<string, Record<string, unknown>>
 
 // Профиль — один объект на тест: хук зависит от него в эффекте, и новый
 // объект на каждый рендер крутил бы запросы бесконечно.
@@ -50,7 +51,12 @@ vi.mock('@/lib/supabase', () => ({
       queries.push(q)
       const run = () => {
         const inner = /groups!inner\(/.test(q.select)
-        let rows = EXAMS.map(e => ({ ...e, groups: e.group && visibleGroups.has(e.group.id) ? e.group : null }))
+        let rows = EXAMS.map(e => ({
+          ...e,
+          group_id: e.group?.id ?? null,
+          groups: e.group && visibleGroups.has(e.group.id) ? { ...e.group, group_students: [{ student_id: 's1' }, { student_id: 's2' }] } : null,
+          ...examFields[e.id],
+        }))
         if (inner) rows = rows.filter(r => r.groups)
         for (const [op, col, v] of q.filters) {
           if (op === 'eq') rows = rows.filter(r => (r as Record<string, unknown>)[col] === v)
@@ -73,15 +79,20 @@ import { useMockExams } from '@/hooks/useMockExams'
 
 const IDLE: TeachingScope = { active: false, loading: false, teacherId: null, courseIds: [], groupIds: [], ownStudentId: null, readOnly: false }
 
-async function titles() {
+async function readExams() {
   profile = { id: 'p-me', role }
   const { result } = renderHook(() => useMockExams())
   await waitFor(() => expect(result.current.loading).toBe(false))
-  return (result.current.exams as { title: string }[]).map(e => e.title).sort()
+  return result.current.exams
+}
+
+async function titles() {
+  return (await readExams()).map(e => e.title).sort()
 }
 
 beforeEach(() => {
   queries = []
+  examFields = {}
   scope = IDLE
 })
 
@@ -125,5 +136,28 @@ describe('useMockExams — режим админа', () => {
     role = 'admin'; effectiveRole = 'admin'
     visibleGroups = new Set(['g1', 'g2'])
     expect(await titles()).toHaveLength(EXAMS.length)
+  })
+
+  it('итог после частичной проверки и работа с фото не дают статус полной проверки', async () => {
+    role = 'admin'; effectiveRole = 'admin'
+    visibleGroups = new Set(['g1', 'g2'])
+    const full = [{ student_id: 's1', task_number: 1 }, { student_id: 's1', task_number: 2 }]
+    const base = {
+      mock_exam_templates: { max_points: [1, 2] },
+      mock_exam_sheets: [{ student_id: 's2', answers: [null], submitted_at: null }],
+      mock_exam_photos: [],
+      mock_exam_results: [{ student_id: 's1' }],
+    }
+    examFields = {
+      'e-colleague': { ...base, mock_exam_task_scores: full.slice(0, 1) },
+      'e-mine': { ...base, mock_exam_task_scores: full, mock_exam_photos: [{ student_id: 's2' }] },
+      'e-owner': { ...base, mock_exam_task_scores: full },
+    }
+    const progress = Object.fromEntries((await readExams()).map(exam => [exam.id, exam.progress]))
+    expect(progress['e-colleague']).toMatchObject({ hasWork: true, allChecked: false })
+    expect(progress['e-mine']).toMatchObject({ hasWork: true, allChecked: false })
+    expect(progress['e-owner']).toMatchObject({ hasWork: true, allChecked: true })
+    expect(queries[0].select).toContain('mock_exam_results(student_id)')
+    expect(queries[0].select).not.toContain('full_name')
   })
 })
