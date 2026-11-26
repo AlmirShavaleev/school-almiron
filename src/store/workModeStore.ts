@@ -29,7 +29,7 @@ export const useWorkModeStore = create<WorkModeState>((set) => ({
   refresh: async () => {
     const my = ++seq
     const sentAt = Date.now()
-    const { data, error } = await safeRpc('my_work_mode')
+    const { data, error } = await safeRpc('my_work_mode', undefined, 5_000)
     if (my !== seq) return
     if (error) { set({ work: null, loaded: true }); return }
     const work = parseWorkMode(data)
