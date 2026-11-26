@@ -51,7 +51,7 @@ export function TopicTimedWorkStudent({
   const {
     homework, files, attempts, attemptFiles, reviews, loading, error, reload,
     startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt,
-  } = useTopicHomework(topicId, { preview })
+  } = useTopicHomework(topicId, { preview, timedStudent: true })
   const { window: win, offsetMs, reload: reloadWindow } = useMyTimedWindow(
     homework?.id ?? null,
     { opensAt: homework?.opens_at ?? null, closesAt: homework?.closes_at ?? null },
@@ -74,7 +74,8 @@ export function TopicTimedWorkStudent({
   )
   const draftFiles = attempt ? attemptFiles.filter(f => f.attempt_id === attempt.id) : []
 
-  const reviewIds = useMemo(() => (attempt ? [attempt.id] : []), [attempt])
+  const reviewId = attempt && attempt.status !== 'draft' ? attempt.id : null
+  const reviewIds = useMemo(() => (reviewId ? [reviewId] : []), [reviewId])
   const reviewTasks = useReviewTasksOfAttempts(reviewIds)
 
   // Таймер тикает, пока есть что отсчитывать.
