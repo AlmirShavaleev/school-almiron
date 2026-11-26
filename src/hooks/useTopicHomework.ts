@@ -352,8 +352,9 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
         const upload = await compressImageFile(source, HOMEWORK_PHOTO_PRESET)
         const path = buildAttemptFilePath(attemptId, upload.name)
 
-        await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload, onProgress ? p => onProgress(i, p) : undefined)
-        onProgress?.(i, 100)
+        await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload,
+          onProgress ? p => onProgress(i, Math.min(99, p)) : undefined,
+          timedStudent ? { idleTimeoutMs: 30_000 } : undefined)
 
         const { data, error: err } = await supabase
           .from('topic_homework_attempt_files')
@@ -369,18 +370,26 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
           .select('*')
           .single()
 
+        let confirmed = data
         if (err) {
-          await supabase.storage.from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET).remove([path])
-          throw err
+          // Ответ мог потеряться ПОСЛЕ успешного INSERT. Не удаляем объект:
+          // он уже может быть частью сданной работы. Проверяем тот же путь.
+          const { data: existing, error: checkError } = await supabase
+            .from('topic_homework_attempt_files').select('*')
+            .eq('attempt_id', attemptId).eq('storage_path', path).maybeSingle()
+          if (checkError || !existing) throw err
+          confirmed = existing
         }
-        const row = data as TopicHomeworkAttemptFileRow
+        const row = confirmed as TopicHomeworkAttemptFileRow
         inserted.push(row)
-        setAttemptFiles(prev => [...prev, row])
+        attemptFilesRef.current = [...attemptFilesRef.current.filter(f => f.id !== row.id), row]
+        setAttemptFiles(prev => [...prev.filter(f => f.id !== row.id), row])
+        onProgress?.(i, 100)
       }
 
       return inserted
     },
-    [],
+    [timedStudent],
   )
 
   /** Один файл — тот же путь, что и у нескольких. Оставлен для старых вызовов. */
