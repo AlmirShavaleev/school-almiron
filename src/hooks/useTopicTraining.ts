@@ -30,6 +30,7 @@ const TRAINING_COLUMNS =
  */
 export function useTopicTraining(topicId: string | null | undefined) {
   const profileId = useAuthStore(s => s.profile?.id ?? null)
+  const role = useAuthStore(s => s.profile?.role)
   const [rows, setRows] = useState<TrainingItemRow[]>([])
   const [hidden, setHidden] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -50,9 +51,13 @@ export function useTopicTraining(topicId: string | null | undefined) {
         .eq('topic_id', topicId)
         .eq('track', TRAINING_TRACK)
         .order('position', { ascending: true }),
-      db.from('topic_subtopic_hidden')
-        .select('subtopic_code')
-        .eq('topic_id', topicId),
+      // RLS уже исключает скрытые подтемы из topic_material_items ученика.
+      // Отдельная таблица нужна только персоналу и предпросмотру (role != student).
+      role === 'student'
+        ? Promise.resolve({ data: [], error: null })
+        : db.from('topic_subtopic_hidden')
+          .select('subtopic_code')
+          .eq('topic_id', topicId),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ответы нетипизированного клиента
     ]).then(([itemsRes, hiddenRes]: any[]) => {
       if (cancelled) return
@@ -69,7 +74,7 @@ export function useTopicTraining(topicId: string | null | undefined) {
     })
 
     return () => { cancelled = true }
-  }, [topicId])
+  }, [topicId, role])
 
   const subtopics: TrainingSubtopic[] = useMemo(() => buildTrainingSubtopics(rows, hidden), [rows, hidden])
 
