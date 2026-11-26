@@ -34,6 +34,9 @@ const CONCURRENCY = 3
 export function useQueueAiJobs(attemptIds: string[]) {
   const [jobs, setJobs] = useState<Record<string, QueueAiJob>>({})
   const [running, setRunning] = useState<Set<string>>(new Set())
+  // У завершённой проверки набор замечаний неизменен. Повторные чтения списка
+  // не должны заново грузить находки уже известных job_id.
+  const findingsCache = useRef<Map<string, number>>(new Map())
   const idsKey = attemptIds.slice().sort().join(',')
 
   const load = useCallback(async (ids: string[]) => {
@@ -62,15 +65,31 @@ export function useQueueAiJobs(attemptIds: string[]) {
     const firstByAttempt = new Map<string, typeof rows[number]>()
     for (const r of rows) if (!firstByAttempt.has(r.attempt_id)) firstByAttempt.set(r.attempt_id, r)
 
-    const jobIds = Array.from(firstByAttempt.values()).map(r => r.id)
+    const latestJobs = Array.from(firstByAttempt.values())
     const counts = new Map<string, number>()
-    if (jobIds.length > 0) {
-      const { data: f } = await supabase
+    const idsToRead: string[] = []
+    const doneIds = new Set<string>()
+    for (const job of latestJobs) {
+      if (job.status === 'done') doneIds.add(job.id)
+      const cached = findingsCache.current.get(job.id)
+      if (cached !== undefined) counts.set(job.id, cached)
+      else idsToRead.push(job.id)
+    }
+    if (idsToRead.length > 0) {
+      const { data: f, error: findingsError } = await supabase
         .from('topic_homework_ai_findings')
         .select('job_id')
-        .in('job_id', jobIds)
-      for (const row of (f ?? []) as { job_id: string }[]) {
-        counts.set(row.job_id, (counts.get(row.job_id) ?? 0) + 1)
+        .in('job_id', idsToRead)
+      // Не кешируем ошибку чтения: при следующем обновлении повторим запрос.
+      if (!findingsError) {
+        for (const id of idsToRead) counts.set(id, 0)
+        for (const row of (f ?? []) as { job_id: string }[]) {
+          counts.set(row.job_id, (counts.get(row.job_id) ?? 0) + 1)
+        }
+        // Только done: у processing могут появиться новые замечания.
+        for (const id of idsToRead) {
+          if (doneIds.has(id)) findingsCache.current.set(id, counts.get(id) ?? 0)
+        }
       }
     }
 
@@ -169,5 +188,11 @@ export function useQueueAiJobs(attemptIds: string[]) {
     setRunning(new Set())
   }, [load])
 
-  return { jobs, running, runChecks, reload: () => load(idsKey ? idsKey.split(',') : []) }
+  // Явное «Обновить» и очистка пометок должны перечитать даже готовые находки.
+  const reload = () => {
+    findingsCache.current.clear()
+    return load(idsKey ? idsKey.split(',') : [])
+  }
+
+  return { jobs, running, runChecks, reload }
 }
