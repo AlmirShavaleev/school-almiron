@@ -37,8 +37,9 @@ import {
  * живёт редактор ДЗ преподавателя, и ему в предпросмотре по прямой ссылке
  * терять попытки нельзя.
  */
-export function useTopicHomework(topicId: string | null, options: { preview?: boolean } = {}) {
+export function useTopicHomework(topicId: string | null, options: { preview?: boolean; timedStudent?: boolean } = {}) {
   const preview = !!options.preview
+  const timedStudent = !!options.timedStudent
   const profile = useAuthStore(s => s.profile)
 
   const [homework, setHomework] = useState<TopicHomeworkRow | null>(null)
@@ -122,9 +123,12 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       }
 
       const ids = rows.map(a => a.id)
+      const reviewIds = timedStudent ? rows.filter(a => a.status !== 'draft').map(a => a.id) : ids
       const [afRes, revRes] = await Promise.all([
         supabase.from('topic_homework_attempt_files').select('*').in('attempt_id', ids).order('position'),
-        supabase.from('topic_homework_reviews').select('*').in('attempt_id', ids).order('created_at'),
+        reviewIds.length > 0
+          ? supabase.from('topic_homework_reviews').select('*').in('attempt_id', reviewIds).order('created_at')
+          : Promise.resolve({ data: [] as TopicHomeworkReviewRow[] }),
       ])
       if (cancelled) return
 
@@ -135,7 +139,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       // Отдельным запросом, потому что RLS students/profiles живёт своими
       // правилами и join через PostgREST здесь только мешает.
       const studentIds = Array.from(new Set(rows.map(a => a.student_id)))
-      if (studentIds.length > 0) {
+      if (!timedStudent && studentIds.length > 0) {
         const { data: studentRows } = await supabase
           .from('students')
           .select('id, profile_id, profiles!inner(full_name)')
@@ -156,7 +160,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
 
     load()
     return () => { cancelled = true }
-  }, [topicId, tick, preview, applyHomework, applyFiles])
+  }, [topicId, tick, preview, timedStudent, applyHomework, applyFiles])
 
   // ── преподаватель ──────────────────────────────────────────
 
@@ -284,9 +288,18 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       p_homework_id: homework.id,
     })
     if (err) throw err
-    if (refresh) reload()
+    if (refresh && timedStudent) {
+      // Не перечитываем условие, файлы и отзывы при начале загрузки фото.
+      // Читаем только созданную сервером попытку, чтобы не сбрасывать экран.
+      const { data: row, error: readError } = await supabase.from('topic_homework_attempts')
+        .select('*').eq('id', data as string).single()
+      if (!readError && row) {
+        const attempt = row as TopicHomeworkAttemptRow
+        setAttempts(prev => [...prev.filter(a => a.id !== attempt.id), attempt])
+      } else reload()
+    } else if (refresh) reload()
     return data as string
-  }, [homework, reload])
+  }, [homework, reload, timedStudent])
 
   /**
    * Сдача работы: несколько файлов за раз, с процентами по каждому.
@@ -339,8 +352,9 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
         const upload = await compressImageFile(source, HOMEWORK_PHOTO_PRESET)
         const path = buildAttemptFilePath(attemptId, upload.name)
 
-        await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload, onProgress ? p => onProgress(i, p) : undefined)
-        onProgress?.(i, 100)
+        await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload,
+          onProgress ? p => onProgress(i, Math.min(99, p)) : undefined,
+          timedStudent ? { idleTimeoutMs: 30_000 } : undefined)
 
         const { data, error: err } = await supabase
           .from('topic_homework_attempt_files')
@@ -356,18 +370,26 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
           .select('*')
           .single()
 
+        let confirmed = data
         if (err) {
-          await supabase.storage.from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET).remove([path])
-          throw err
+          // Ответ мог потеряться ПОСЛЕ успешного INSERT. Не удаляем объект:
+          // он уже может быть частью сданной работы. Проверяем тот же путь.
+          const { data: existing, error: checkError } = await supabase
+            .from('topic_homework_attempt_files').select('*')
+            .eq('attempt_id', attemptId).eq('storage_path', path).maybeSingle()
+          if (checkError || !existing) throw err
+          confirmed = existing
         }
-        const row = data as TopicHomeworkAttemptFileRow
+        const row = confirmed as TopicHomeworkAttemptFileRow
         inserted.push(row)
-        setAttemptFiles(prev => [...prev, row])
+        attemptFilesRef.current = [...attemptFilesRef.current.filter(f => f.id !== row.id), row]
+        setAttemptFiles(prev => [...prev.filter(f => f.id !== row.id), row])
+        onProgress?.(i, 100)
       }
 
       return inserted
     },
-    [],
+    [timedStudent],
   )
 
   /** Один файл — тот же путь, что и у нескольких. Оставлен для старых вызовов. */

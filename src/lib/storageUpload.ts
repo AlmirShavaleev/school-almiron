@@ -18,6 +18,7 @@ export async function uploadToStorage(
   path: string,
   file: File,
   onProgress?: (percent: number) => void,
+  options: { idleTimeoutMs?: number } = {},
 ): Promise<void> {
   const { data: signed, error: signErr } = await supabase.storage
     .from(bucket)
@@ -39,13 +40,38 @@ export async function uploadToStorage(
     // Без этого заголовка объект приезжает с `no-cache`, и подписанная
     // ссылка не поможет: браузер каждый раз пойдёт в сеть (§105).
     xhr.setRequestHeader('cache-control', `max-age=${UPLOAD_CACHE_CONTROL_S}`)
+    // Для работ по времени: ограничиваем именно отсутствие прогресса,
+    // а не длительность всей передачи на медленном, но живом канале.
+    let idle: ReturnType<typeof setTimeout> | undefined
+    let settled = false
+    const clearIdle = () => { if (idle !== undefined) clearTimeout(idle) }
+    const finish = (error?: Error) => {
+      if (settled) return
+      settled = true
+      clearIdle()
+      if (error) reject(error)
+      else resolve()
+    }
+    const armIdle = () => {
+      clearIdle()
+      if (options.idleTimeoutMs && options.idleTimeoutMs > 0) {
+        idle = setTimeout(() => {
+          finish(new Error('Нет прогресса загрузки. Проверьте соединение и повторите.'))
+          xhr.abort()
+        }, options.idleTimeoutMs)
+      }
+    }
     xhr.upload.onprogress = e => {
+      armIdle()
       if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100))
     }
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
-      ? resolve()
-      : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
-    xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
-    xhr.send(file)
+    xhr.onload = () => finish(xhr.status >= 200 && xhr.status < 300
+      ? undefined
+      : new Error('Ошибка загрузки: HTTP ' + xhr.status))
+    xhr.onerror = () => finish(new Error('Ошибка сети при загрузке файла'))
+    xhr.onabort = () => finish(new Error('Загрузка прервана'))
+    armIdle()
+    try { xhr.send(file) }
+    catch (error) { finish(error instanceof Error ? error : new Error('Ошибка загрузки')) }
   })
 }
