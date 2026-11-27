@@ -6,7 +6,9 @@ import { chromium } from '@playwright/test'
 
 const [baseline, candidate] = process.argv.slice(2, 4).map(value => resolve(value))
 const load = process.argv.includes('--load')
+const rounds = Number(process.env.ALMIRON_LOAD_ROUNDS ?? 2)
 if (!baseline || !candidate) throw new Error('Usage: node scripts/measure-frontend.mjs BASELINE_DIST CANDIDATE_DIST')
+if (!Number.isInteger(rounds) || rounds < 1) throw new Error('ALMIRON_LOAD_ROUNDS must be a positive integer')
 const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' }
 const profile = '10000000-0000-4000-8000-000000000001'
 const student = '10000000-0000-4000-8000-000000000002'
@@ -59,6 +61,8 @@ async function measure(browser, origin, signed, index = 0, readyToStart = async 
   const context = await browser.newContext()
   const calls = []
   const transfers = []
+  const pending = new Set()
+  let lastActivity = 0
   let apiBytes = 0
   const session = sessionFor(index)
   try {
@@ -81,7 +85,18 @@ async function measure(browser, origin, signed, index = 0, readyToStart = async 
       })
     }
     const page = await context.newPage()
+    page.on('request', request => {
+      const url = new URL(request.url())
+      if (url.origin !== origin && url.hostname !== `${ref}.supabase.co`) return
+      pending.add(request)
+      lastActivity = Date.now()
+    })
+    function requestEnded(request) {
+      if (pending.delete(request)) lastActivity = Date.now()
+    }
+    page.on('requestfailed', requestEnded)
     page.on('requestfinished', request => {
+      requestEnded(request)
       transfers.push(request.sizes().then(sizes => Object.values(sizes).reduce((sum, size) => sum + Math.max(0, size), 0), () => 0))
     })
     await readyToStart()
@@ -93,7 +108,11 @@ async function measure(browser, origin, signed, index = 0, readyToStart = async 
       return element?.getBoundingClientRect().width ? performance.now() : false
     }, signed ? title : null, { timeout: 90_000 })
     const readyMs = await ready.jsonValue()
-    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 400)))
+    const readyAt = Date.now()
+    while (pending.size || Date.now() - Math.max(readyAt, lastActivity) < 1000) {
+      if (Date.now() - readyAt > 90_000) throw new Error('Startup HTTP requests did not settle')
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
     const httpBytes = (await Promise.all(transfers)).reduce((sum, bytes) => sum + bytes, 0)
     return { readyMs, calls: calls.filter(path => path !== '/rest/v1/rpc/perf_ingest').length, rum: calls.filter(path => path === '/rest/v1/rpc/perf_ingest').length, apiBytes, httpBytes }
   } catch (error) {
@@ -147,7 +166,7 @@ try {
   if (load) {
     for (const count of [1, 5, 10, 20, 30]) {
       const samples = [[], []]
-      for (let round = 0; round < 2; round++) {
+      for (let round = 0; round < rounds; round++) {
         for (const index of round ? [1, 0] : [0, 1]) {
           samples[index].push(...await cohort(browser, servers[index], count))
         }
