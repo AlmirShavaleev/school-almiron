@@ -6,9 +6,8 @@ import { MemoryRouter } from 'react-router-dom'
  * Главная ученика «как в Notion» (письмо ЛК_стиль_главная_как_notion.md, 16.10).
  *
  * Хуки главной настоящие, подменён Supabase — «записывающим» клиентом: так
- * проверяется и картинка, и то, КАКИЕ запросы главная делает. Хуки соседних
- * экранов (журнал ДЗ, программа курса) и приглашение в Telegram подменены:
- * у них свои тесты, здесь — только то, как главная их показывает.
+ * проверяются содержимое и запросы главной. Хуки журнала ДЗ и программы курса
+ * подменены, чтобы проверить, что главная их не вызывает.
  */
 
 const calls: string[] = []
@@ -57,26 +56,15 @@ vi.mock('@/store/authStore', () => {
 vi.mock('@/components/shared/TelegramOnboarding', () => ({
   TelegramOnboarding: ({ compact }: { compact?: boolean }) => <div data-testid="tg-line" data-compact={compact || undefined} />,
 }))
-const homeworkLoad = vi.hoisted(() => vi.fn())
+const { homeworkLoad, courseProgramLoad } = vi.hoisted(() => ({
+  homeworkLoad: vi.fn(),
+  courseProgramLoad: vi.fn(() => ({ loading: false, modules: [] })),
+}))
 vi.mock('@/hooks/useMyTopicHomework', () => ({
   useMyTopicHomework: homeworkLoad,
 }))
-const topic = (id: string, title: string, extra: Record<string, unknown> = {}) => ({
-  id, title, kind: 'lesson', hw_id: `hw-${id}`, hw_status: null, hw_due_at: null, available_from: null, is_open: true, progress: null, ...extra,
-})
 vi.mock('@/hooks/useStudentCourseProgram', () => ({
-  useStudentCourseProgram: () => ({
-    loading: false,
-    modules: [{
-      id: 'm2', title: 'Динамика',
-      topics: [
-        topic('t5', 'Первый закон Ньютона', { hw_status: 'accepted' }),
-        topic('t6', 'Второй закон Ньютона'),
-        topic('t7', 'Принцип суперпозиции', { hw_id: null }),
-        topic('t8', 'Третий закон Ньютона', { is_open: null, available_from: '2099-10-19T00:00:00Z' }),
-      ],
-    }],
-  }),
+  useStudentCourseProgram: courseProgramLoad,
 }))
 
 import { StudentDashboard } from '@/pages/student/StudentDashboard'
@@ -90,7 +78,12 @@ async function renderHome() {
   await screen.findByTestId('hero-continue')
 }
 
-beforeEach(() => { calls.length = 0; homeworkLoad.mockClear(); try { localStorage.clear() } catch { /* нет */ } })
+beforeEach(() => {
+  calls.length = 0
+  homeworkLoad.mockClear()
+  courseProgramLoad.mockClear()
+  try { localStorage.clear() } catch { /* нет */ }
+})
 
 describe('главная ученика «как в Notion»', () => {
   it('шапка: обложка, «Имя · подготовка к ЕГЭ», свойства — цель, курс, серия; Telegram строкой', async () => {
@@ -160,22 +153,18 @@ describe('главная ученика «как в Notion»', () => {
     expect(homeworkLoad).not.toHaveBeenCalled()
   })
 
-  it('«Продолжить»: три урока со следующего, замок — как в плитках курса; закрытый не ведёт', async () => {
+  it('карточки «Продолжить» убраны, полная программа курса не загружается', async () => {
     await renderHome()
-    const cards = await screen.findAllByTestId('home-continue-card')
-    expect(cards.map(c => c.getAttribute('data-state'))).toEqual(['hw', 'nohw', 'locked'])
-    expect(cards[0]).toHaveTextContent('Урок 2 · Второй закон Ньютона')
-    expect(within(cards[0]).getByRole('link')).toHaveAttribute('href', '/my-course/g1/topic/t6')
-    expect(within(cards[2]).getByTestId('home-continue-pill').textContent).toMatch(/^🔒/)
-    expect(within(cards[2]).queryByRole('link')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Продолжить' })).not.toBeInTheDocument()
+    expect(courseProgramLoad).not.toHaveBeenCalled()
   })
 
-  it('«Продолжить урок →» в шапке и карточка курса — как раньше', async () => {
+  it('убирает прогресс по курсам с главной, сохраняет быстрый переход в урок и курс', async () => {
     await renderHome()
     expect(screen.getByTestId('hero-continue')).toHaveAttribute('href', '/my-course/g1/topic/t6')
-    const course = screen.getByTestId('home-course')
-    expect(within(course).getByTestId('course-percent')).toHaveTextContent('40%')
-    expect(within(course).getAllByTestId('home-module').map(m => m.textContent)).toEqual(['Кинематика80%', 'Динамика0%'])
+    expect(within(screen.getByTestId('home-prop-course')).getByRole('link')).toHaveAttribute('href', '/my-course/g1')
+    expect(screen.queryByTestId('courses-card')).not.toBeInTheDocument()
+    expect(screen.queryByText('Прогресс по ДЗ')).not.toBeInTheDocument()
   })
 
   it('снятые блоки не вернулись; запросы — те же источники, без новых RPC', async () => {
@@ -200,6 +189,41 @@ describe('главная ученика «как в Notion»', () => {
     await waitFor(() => expect(screen.getByTestId('forecast-physics-value')).toHaveTextContent('58–70'))
     expect(calls.filter(c => c === 'rpc:my_score_forecast')).toHaveLength(1)
     expect(calls).not.toContain('rpc:student_exam_forecast_evidence')
+  })
+
+  it('показывает сроки и фигуры по статусам планов из существующего ответа главной', async () => {
+    const saved = RPC.student_home_courses
+    const planData = { title: 'План на неделю', starts_on: '2026-11-27', total: 7, overdue: 0, items: [], course_titles: ['Физика'] }
+    RPC.student_home_courses = (saved as object[]).map(course => ({ ...course, work_plans: {
+      today: '2026-11-27', plans: [
+        { ...planData, id: 'week-1', ends_on: '2026-12-03', done: 1 },
+        { ...planData, id: 'week-2', ends_on: '2026-12-10', done: 0 },
+        { ...planData, id: 'week-3', ends_on: '2026-12-17', done: 7 },
+      ],
+    } }))
+    try {
+      await renderHome()
+      const plan = await screen.findByTestId('home-work-plan')
+      expect(screen.getByTestId('home-widgets').compareDocumentPosition(plan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      const cards = within(plan)
+      const started = cards.getByRole('article', { name: 'Срок до 3 дек.' })
+      const todo = cards.getByRole('article', { name: 'Срок до 10 дек.' })
+      const completed = cards.getByRole('article', { name: 'Срок до 17 дек.' })
+      expect(started.querySelector('img')).toHaveAttribute('src', '/brand/stu/plan-rocket.webp')
+      expect(todo.querySelector('img')).toHaveAttribute('src', '/brand/stu/plan-clock.webp')
+      expect(completed.querySelector('img')).toHaveAttribute('src', '/brand/stu/plan-target.webp')
+      expect(todo).toHaveTextContent('Не начато')
+      expect(completed).toHaveTextContent('Выполнено')
+      const card = within(started)
+      expect(card.getByText('Физика')).toBeInTheDocument()
+      expect(card.getByText('В процессе')).toBeInTheDocument()
+      expect(card.queryByText('План на неделю')).toBeNull()
+      expect(card.getByText('Выполнено 1 из 7 · осталось 6')).toBeInTheDocument()
+      expect(card.queryByText('На сегодня')).toBeNull()
+      expect(card.getByRole('link', { name: 'Открыть весь план' })).toHaveAttribute('href', '/my-work-plan/week-1')
+      expect(calls.filter(c => c === 'rpc:student_home_courses')).toHaveLength(1)
+      expect(calls).not.toContain('rpc:student_work_plan_read')
+    } finally { RPC.student_home_courses = saved }
   })
 
   it('виджет «Прогноз ЕГЭ»: только диапазон; данных мало — «0»', async () => {

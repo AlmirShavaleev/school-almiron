@@ -55,7 +55,7 @@ export const READ_RPC = new Set([
   'my_live_timed_works', 'my_topic_rating', 'catalog_my_overview',
 ])
 
-const BACKGROUND_RPC = new Set(['school_presence_touch', 'record_app_visit', 'perf_ingest'])
+const BACKGROUND_RPC = new Set(['school_presence_touch', 'school_presence_touch_with_time', 'record_app_visit', 'perf_ingest'])
 
 interface Entry {
   promise: Promise<Response>

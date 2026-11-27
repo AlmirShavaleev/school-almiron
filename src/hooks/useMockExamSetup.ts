@@ -45,6 +45,7 @@ export interface SetupExam {
   photo_grace_minutes: number
   condition_path: string | null
   solution_path: string | null
+  participantIds: string[] | null
 }
 
 export interface SetupDraft {
@@ -61,9 +62,16 @@ export interface SetupDraft {
   date?: string | null
   /** §229. Как раздали варианты (только для экрана). Не передан — не пишется. */
   variant_mode?: 'order' | 'random' | 'manual'
+  participantIds?: string[]
 }
 
-const EXAM_COLUMNS = 'id, title, date, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)'
+type SetupExamRow = Omit<SetupExam, 'groupName' | 'courseId' | 'template' | 'participantIds'> & {
+  groups: { name: string; course_id: string } | null
+  mock_exam_templates: MockExamTemplate | null
+  mock_exam_rosters: { student_ids: string[] } | null
+}
+
+const EXAM_COLUMNS = 'id, title, date, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale), mock_exam_rosters(student_ids)'
 
 export function useMockExamSetup(examId: string | undefined) {
   const [exam, setExam] = useState<SetupExam | null>(null)
@@ -86,7 +94,7 @@ export function useMockExamSetup(examId: string | undefined) {
     let cancelled = false
     ;(async () => {
       setError(null)
-      const { data: e, error: eErr } = await db.from<any>('mock_exams').select(EXAM_COLUMNS).eq('id', examId).maybeSingle()
+      const { data: e, error: eErr } = await db.from<SetupExamRow>('mock_exams').select(EXAM_COLUMNS).eq('id', examId).maybeSingle()
       if (cancelled) return
       if (eErr || !e) {
         // Колонок §221 ещё нет (ветка влита раньше миграции) — так и сказать.
@@ -103,6 +111,7 @@ export function useMockExamSetup(examId: string | undefined) {
         duration_minutes: Number(e.duration_minutes ?? 240),
         photo_grace_minutes: Number(e.photo_grace_minutes ?? 15),
         condition_path: e.condition_path ?? null, solution_path: e.solution_path ?? null,
+        participantIds: e.mock_exam_rosters?.student_ids ?? null,
       }
       const [k, sc, sh, rs, ph] = await Promise.all([
         db.from<{ answers: (string | null)[] }>('mock_exam_answer_keys').select('answers').eq('mock_exam_id', ex.id).maybeSingle(),
@@ -136,7 +145,11 @@ export function useMockExamSetup(examId: string | undefined) {
     else if (d.date) row.date = d.date
     if (d.group_id && d.group_id !== exam.group_id) row.group_id = d.group_id
     if (d.variant_mode) row.variant_mode = d.variant_mode
-    const { error: err } = await db.from('mock_exams').update(row).eq('id', exam.id)
+    const { error: err } = d.participantIds === undefined
+      ? await db.from('mock_exams').update(row).eq('id', exam.id)
+      : await db.rpc('save_mock_exam_participant_settings', {
+        p_mock_exam_id: exam.id, p_settings: row, p_student_ids: d.participantIds,
+      })
     if (err) return { error: err.message || 'Не сохранилось' }
     reload()
     return { error: null }

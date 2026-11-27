@@ -15,6 +15,9 @@ const HOMEWORK_ROW = { id: 'hw1', topic_id: TOPIC, title: 'ДЗ', instructions: 
 
 const storageUploads: { path: string; name: string; type: string }[] = []
 const insertedRows: Record<string, unknown>[] = []
+const tableRequests: string[] = []
+const readHomework = vi.fn<() => Promise<{ data: unknown; error: null }>>()
+const submit = vi.fn<() => Promise<{ error: Error | null }>>()
 
 function chain(rows: unknown) {
   const c: Record<string, unknown> = {}
@@ -29,10 +32,15 @@ function chain(rows: unknown) {
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: (table: string) => {
-      if (table === 'topic_homework') return chain([HOMEWORK_ROW])
+      tableRequests.push(table)
+      if (table === 'topic_homework') return { ...chain([HOMEWORK_ROW]), select: () => ({
+        eq: () => ({ maybeSingle: readHomework }),
+      }) }
       return chain([])
     },
-    rpc: () => Promise.resolve({ data: null, error: null }),
+    rpc: (kind: string) => kind === 'topic_homework_submit_attempt'
+      ? submit()
+      : Promise.resolve({ data: 'att-1', error: null }),
     storage: {
       from: () => ({
         // Подписать URL «не удалось» — хук уходит в простой upload без XHR,
@@ -65,8 +73,8 @@ vi.mock('@/store/authStore', () => ({
 
 import { useTopicHomework } from '@/hooks/useTopicHomework'
 
-async function mountHook() {
-  const { result } = renderHook(() => useTopicHomework(TOPIC))
+async function mountHook(timedStudent = false) {
+  const { result } = renderHook(() => useTopicHomework(TOPIC, { timedStudent }))
   await waitFor(() => expect(result.current.homework?.id).toBe('hw1'))
   return result
 }
@@ -74,6 +82,9 @@ async function mountHook() {
 beforeEach(() => {
   storageUploads.length = 0
   insertedRows.length = 0
+  tableRequests.length = 0
+  readHomework.mockReset().mockResolvedValue({ data: HOMEWORK_ROW, error: null })
+  submit.mockReset().mockResolvedValue({ error: null })
   compressImageFile.mockClear()
 })
 
@@ -136,6 +147,66 @@ describe('uploadAttemptFiles — гейт по формату (§173)', () => {
     expect(storageUploads.every(u => u.path.startsWith('att-1/'))).toBe(true)
     expect(insertedRows.map(r => r.file_name)).toEqual(ok.map(f => f.name))
     expect(insertedRows.map(r => r.position)).toEqual([0, 1, 2, 3, 4])
+  })
+})
+
+describe('проверочная ученика', () => {
+  const draft = {
+    id: 'att-1',
+    status: 'draft',
+    topic_homework_attempt_files: [],
+    topic_homework_reviews: [],
+  }
+
+  it('читает работу одним запросом и сохраняет в списке фото, записанное во время фонового обновления', async () => {
+    const snapshot = {
+      data: { ...HOMEWORK_ROW, topic_homework_files: [], topic_homework_attempts: [] },
+      error: null,
+    }
+    readHomework.mockResolvedValueOnce(snapshot)
+    const result = await mountHook(true)
+    expect(tableRequests).toEqual(['topic_homework'])
+
+    let finishRead: () => void = () => { throw new Error('Запрос за черновиком не начался') }
+    readHomework.mockImplementationOnce(() => new Promise(resolve => {
+      finishRead = () => resolve({
+        data: { ...snapshot.data, topic_homework_attempts: [draft] },
+        error: null,
+      })
+    }))
+    await act(async () => { await result.current.startAttempt() })
+    expect(result.current.loading).toBe(false)
+
+    const first = new File(['1'], 'a.jpg', { type: 'image/jpeg' })
+    const second = new File(['2'], 'b.jpg', { type: 'image/jpeg' })
+    compressImageFile.mockResolvedValueOnce(first).mockRejectedValueOnce(new Error('Сбой второго фото'))
+    await act(async () => {
+      await expect(result.current.uploadAttemptFiles('att-1', [first, second])).rejects.toThrow('Сбой второго фото')
+    })
+    await act(async () => { finishRead() })
+
+    expect(result.current.attempts.map(row => row.id)).toEqual(['att-1'])
+    expect(result.current.attemptFiles.map(row => row.file_name)).toEqual(['a.jpg'])
+    expect(tableRequests).toEqual(['topic_homework', 'topic_homework', 'topic_homework_attempt_files'])
+  })
+
+  it('после ответа сервера показывает сдачу, пока фоновый запрос ещё загружается', async () => {
+    readHomework.mockResolvedValueOnce({
+      data: { ...HOMEWORK_ROW, topic_homework_files: [], topic_homework_attempts: [draft] },
+      error: null,
+    })
+    const result = await mountHook(true)
+    submit.mockResolvedValueOnce({ error: new Error('Работа ещё не сдана') })
+    await act(async () => {
+      await expect(result.current.submitAttempt('att-1')).rejects.toThrow('Работа ещё не сдана')
+    })
+    expect(result.current.attempts[0].status).toBe('draft')
+
+    readHomework.mockImplementationOnce(() => new Promise(() => {}))
+    await act(async () => { await result.current.submitAttempt('att-1') })
+    expect(result.current.attempts[0].status).toBe('submitted')
+    expect(result.current.loading).toBe(false)
+    expect(tableRequests).toEqual(['topic_homework', 'topic_homework'])
   })
 })
 

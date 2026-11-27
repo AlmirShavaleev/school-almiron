@@ -90,6 +90,38 @@ export function exportMockExams(rows: MockExamExportRow[]) {
   download(wb, 'probniki.xlsx')
 }
 
+type MockExamExcelCell = string | number | null | XLSX.CellObject
+
+export interface MockExamTableExport {
+  columns: { label: string; width: number }[]
+  rows: MockExamExcelCell[][]
+  footer?: MockExamExcelCell[][]
+}
+
+export function exportMockExamTable(
+  exam: { title: string; date: string; groupName?: string | null },
+  { columns, rows, footer }: MockExamTableExport,
+) {
+  const ws = XLSX.utils.aoa_to_sheet([
+    columns.map(column => column.label),
+    ...rows,
+    ...(footer?.length ? [[], ...footer] : []),
+  ])
+  setColWidths(ws, columns.map(column => column.width))
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: rows.length, c: columns.length - 1 },
+  }) }
+
+  const wb = XLSX.utils.book_new()
+  wb.Props = { Title: exam.title, Subject: exam.groupName ?? undefined }
+  XLSX.utils.book_append_sheet(wb, ws, 'Результаты')
+  const label = [exam.title, exam.groupName].filter(Boolean).join(' — ')
+    .replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 110)
+  const date = /^\d{4}-\d{2}-\d{2}/.exec(exam.date)?.[0]
+  download(wb, `Результаты — ${label || 'Пробник'}${date ? ` — ${date}` : ''}.xlsx`)
+}
+
 // ─── Платежи ─────────────────────────────────────────────────────────────────
 export interface PaymentExportRow {
   date:        string

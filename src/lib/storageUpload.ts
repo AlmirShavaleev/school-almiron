@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { UPLOAD_CACHE_CONTROL_S } from '@/lib/storage'
+import { record } from '@/lib/perf/rum'
 
 /**
  * Загрузка одного файла в Storage с процентами — ОДНА на проект.
@@ -46,6 +47,8 @@ export async function uploadToStorage(
       ? resolve()
       : reject(new Error('Ошибка загрузки: HTTP ' + xhr.status))
     xhr.onerror = () => reject(new Error('Ошибка сети при загрузке файла'))
+    const startedAt = performance.now()
+    xhr.onloadend = () => record('api', 'PUT /storage/v1/object/upload/sign', performance.now() - startedAt, xhr.status)
     xhr.send(file)
   })
 }

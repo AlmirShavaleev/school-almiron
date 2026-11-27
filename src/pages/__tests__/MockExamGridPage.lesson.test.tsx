@@ -27,6 +27,8 @@ function thenable<T>(value: T) {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
+    order: () => chain,
+    range: () => chain,
     maybeSingle: () => Promise.resolve(value),
     then: (res: (v: T) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(value).then(res, rej),
   }

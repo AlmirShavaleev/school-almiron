@@ -17,6 +17,14 @@ const GROUPS = [
   { id: 'g2', name: '11Б профиль', course_id: 'c1', is_active: true, group_students: [{ count: 14 }] },
   { id: 'g3', name: 'Архив', course_id: 'c1', is_active: false, group_students: [{ count: 3 }] },
 ]
+const groupStudent = (group_id: string, student_id: string, full_name: string) =>
+  ({ group_id, student_id, students: { id: student_id, profiles: { full_name } } })
+const GROUP_STUDENTS = [
+  groupStudent('g1', 'a', 'Алина А.'),
+  groupStudent('g1', 'b', 'Борис Б.'),
+  groupStudent('g2', 'a', 'Алина А.'),
+  groupStudent('g2', 'c', 'Вера В.'),
+]
 let profile: { id: string; role: string }
 let teacherRow: { id: string } | null
 /** Вставки в `mock_exams` (пробники); прочие таблицы — в `insertsBy`. */
@@ -38,19 +46,16 @@ function chain(table: string) {
   const result = () => {
     if (op === 'insert') {
       const rows = payload as Record<string, unknown>[]
-      if (table !== 'mock_exams') {
-        ;(insertsBy[table] ??= []).push(rows)
-        if (table === 'mock_exam_variants') return { data: rows.map(r => ({ id: `var-${r.mock_exam_id}-${r.position}`, mock_exam_id: r.mock_exam_id, position: r.position })), error: null }
-        return { data: rows, error: null }
-      }
-      inserted.push(rows)
-      return { data: rows.map((r, i) => ({ id: `new-${i + 1}`, group_id: r.group_id })), error: null }
+      ;(insertsBy[table] ??= []).push(rows)
+      if (table === 'mock_exam_variants') return { data: rows.map(r => ({ id: `var-${r.mock_exam_id}-${r.position}`, mock_exam_id: r.mock_exam_id, position: r.position })), error: null }
+      return { data: rows, error: null }
     }
     if (op === 'update') { updates.push({ row: payload as Record<string, unknown>, id: eqId, table }); return { data: null, error: null } }
     if (op === 'upsert') { upserts.push({ table, rows: payload as Record<string, unknown>[] }); return { data: null, error: null } }
     if (op === 'delete') { deletes.push({ table, id: eqId }); return { data: null, error: null } }
     if (table === 'mock_exam_templates') return { data: [TEMPLATE], error: null }
     if (table === 'groups') return { data: GROUPS, error: null }
+    if (table === 'group_students') return { data: GROUP_STUDENTS, error: null }
     if (table in workRows) return { data: workRows[table], error: null }
     return { data: [], error: null }
   }
@@ -78,6 +83,11 @@ vi.mock('@/lib/supabase', () => ({
     from: (t: string) => chain(t),
     rpc: (fn: string, args: Record<string, unknown>) => {
       rpcCalls.push({ fn, args })
+      if (fn === 'create_mock_exams_for_participants') {
+        const rows = args.p_exams as Record<string, unknown>[]
+        inserted.push(rows)
+        return Promise.resolve({ data: rows.map((r, i) => ({ id: `new-${i + 1}`, group_id: r.group_id })), error: null })
+      }
       return Promise.resolve({ data: { not_checkable: [12], grade: { changed_cells: 7, graded_students: 3 } }, error: null })
     },
     storage: {
@@ -127,6 +137,11 @@ function setWhen(when: { date: string; time: string }) {
   fireEvent.change(screen.getByTestId('mock-form-time'), { target: { value: when.time } })
 }
 const chip = (name: string) => screen.getAllByTestId('mock-form-group-chip').find(c => c.textContent?.includes(name))!
+const participantList = () => within(screen.getByRole('region', { name: 'Кто пишет' }))
+async function addGroup(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(name) }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Добавить всю группу' }))
+}
 
 beforeEach(() => {
   cleanup()
@@ -145,10 +160,13 @@ describe('создание: несколько групп → по пробни�
   it('две группы — одна вставка двух строк с общими названием, шаблоном, временем; файлы — в папку КАЖДОГО; ключ — каждому', async () => {
     mountCreate()
     fireEvent.change(await screen.findByTestId('mock-form-title'), { target: { value: 'Пробник №4' } })
-    // Неактивной группы в чипах нет; число учеников — рядом с именем.
-    expect(screen.getAllByTestId('mock-form-group-chip').map(c => c.textContent)).toEqual(['11А профиль16', '11Б профиль14'])
-    fireEvent.click(chip('11А'))
-    fireEvent.click(chip('11Б'))
+    expect(within(screen.getByTestId('mock-form-groups')).getAllByRole('button')).toHaveLength(2)
+    await addGroup('11А')
+    await addGroup('11Б')
+    expect(participantList().getAllByText('Алина А.')).toHaveLength(1)
+    expect(participantList().getByText('Вера В.')).toBeInTheDocument()
+    fireEvent.click(participantList().getByRole('button', { name: 'Убрать Борис Б. из списка' }))
+    expect(participantList().queryByText('Борис Б.')).not.toBeInTheDocument()
     setWhen({ date: '2027-03-06', time: '10:00' })
     const pdf = new File(['%PDF'], 'variant_4.pdf', { type: 'application/pdf' })
     fireEvent.change(screen.getByTestId('mock-form-file-input-condition'), { target: { files: [pdf] } })
@@ -162,6 +180,7 @@ describe('создание: несколько групп → по пробни�
     expect(inserted).toHaveLength(1)
     const rows = inserted[0]
     expect(rows.map(r => r.group_id)).toEqual(['g1', 'g2'])
+    expect(rows.map(r => r.student_ids)).toEqual([['a'], ['c']])
     for (const r of rows) {
       expect(r).toMatchObject({ title: 'Пробник №4', template_id: 't1', starts_at: '2027-03-06T07:00:00.000Z', date: '2027-03-06T07:00:00.000Z', duration_minutes: 235, subject: 'math', exam_type: 'ege', max_score: 32 })
       expect(r).not.toHaveProperty('module_id')
@@ -188,7 +207,8 @@ describe('создание: несколько групп → по пробни�
     mountCreate('g2')
     fireEvent.change(await screen.findByTestId('mock-form-title'), { target: { value: 'Черновик' } })
     // Группа из ?group= уже отмечена.
-    expect(chip('11Б')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /11Б профиль/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(await participantList().findByText('Вера В.')).toBeInTheDocument()
     setWhen({ date: '2027-03-06', time: '11:30' })
     await act(async () => { fireEvent.click(screen.getByTestId('mock-form-draft')) })
     await waitFor(() => expect(inserted).toHaveLength(1))
@@ -202,7 +222,7 @@ describe('создание: несколько групп → по пробни�
     fireEvent.change(await screen.findByTestId('mock-form-title'), { target: { value: 'П' } })
     fireEvent.change(screen.getByTestId('mock-form-time'), { target: { value: '' } })
     await act(async () => { fireEvent.click(screen.getByTestId('mock-form-assign')) })
-    expect(screen.getByTestId('mock-form-status')).toHaveTextContent('Выберите группу')
+    expect(screen.getByTestId('mock-form-status')).toHaveTextContent('Выберите учеников')
     expect(screen.getByTestId('mock-form-status')).toHaveTextContent('Нужны дата и время начала')
     expect(inserted).toHaveLength(0)
   })
@@ -210,6 +230,7 @@ describe('создание: несколько групп → по пробни�
   it('«своё» — длительность минутами', async () => {
     mountCreate('g1')
     fireEvent.change(await screen.findByTestId('mock-form-title'), { target: { value: 'П' } })
+    await participantList().findByText('Борис Б.')
     fireEvent.click(screen.getAllByTestId('mock-form-duration-chip')[2])
     fireEvent.change(screen.getByTestId('mock-form-duration'), { target: { value: '180' } })
     setWhen({ date: '2027-03-06', time: '10:00' })
@@ -224,6 +245,7 @@ describe('§219: created_by — строка teachers по профилю при
   async function createOne() {
     mountCreate('g1')
     fireEvent.change(await screen.findByTestId('mock-form-title'), { target: { value: 'Пробник №4' } })
+    await participantList().findByText('Борис Б.')
     setWhen({ date: '2027-03-06', time: '10:00' })
     await act(async () => { fireEvent.click(screen.getByTestId('mock-form-assign')) })
     await waitFor(() => expect(inserted).toHaveLength(1))
@@ -329,12 +351,28 @@ describe('настройка существующего пробника (вкл
     await waitFor(() => expect(updates).toHaveLength(1))
     expect(updates[0].row.starts_at).toBeNull()
   })
+
+  it('показывает сохранённых участников и сохраняет изменения списка до начала', async () => {
+    editExam = { ...editExam, starts_at: '2099-03-06T07:00:00.000Z', mock_exam_rosters: { student_ids: ['a'] } }
+    mountEdit()
+    await screen.findByRole('region', { name: 'Кто пишет' })
+    expect(await participantList().findByText('Алина А.')).toBeInTheDocument()
+    expect(participantList().queryByText('Борис Б.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Борис Б.' }))
+    fireEvent.click(participantList().getByRole('button', { name: 'Убрать Алина А. из списка' }))
+    await act(async () => { fireEvent.click(screen.getByTestId('mock-form-assign')) })
+    expect(rpcCalls.find(call => call.fn === 'save_mock_exam_participant_settings')?.args).toMatchObject({
+      p_mock_exam_id: 'ex1',
+      p_student_ids: ['b'],
+    })
+  })
 })
 
 describe('§224.2: время «на сейчас» — напоминания в Telegram не уйдут', () => {
   it('новый пробник, время в прошлом: предупреждение; назначение не блокируется', async () => {
     mountCreate('g1')
     fireEvent.change(await screen.findByTestId('mock-form-title'), { target: { value: 'П' } })
+    await participantList().findByText('Борис Б.')
     expect(screen.queryByTestId('mock-form-start-warning')).toBeNull()
     setWhen(msk(-5))
     expect(screen.getByTestId('mock-form-start-warning')).toHaveTextContent('Уведомление «Пробник начался» не уйдёт — время уже наступило')

@@ -5,7 +5,6 @@
  */
 import type { ActivityDay } from '@/lib/studentActivity'
 import { plural } from '@/lib/plural'
-import { lessonTile, type LessonTile } from '@/lib/courseScreen'
 
 // ── Обложки ─────────────────────────────────────────────────────────────────
 
@@ -137,36 +136,10 @@ export function activityDaysFor(today: string): number {
   return Math.round((Date.UTC(y, m - 1, d) - from) / 86_400_000) + 1
 }
 
-// ── Строка свойств и «Продолжить» ────────────────────────────────────────────
+// ── Строка свойств ───────────────────────────────────────────────────────────
 
 /** «4 дня подряд» — серия в строке свойств. */
 export function streakValue(n: number): string {
   return `${n} ${plural(n, 'день', 'дня', 'дней')} подряд`
-}
-
-export interface HomeContinueCard { id: string; no: number; title: string; module: string; tile: LessonTile }
-
-/**
- * Три урока, начиная со следующего: тот, к которому ведёт «Продолжить», и два
- * за ним в его разделе (если раздел кончился — из следующего). Статус и замок
- * — то же правило `lessonTile`, что у плиток на странице курса.
- */
-export function continueCards(
-  modules: ReadonlyArray<{ title: string; topics: ReadonlyArray<Parameters<typeof lessonTile>[0]> }>,
-  nextTopicId: string,
-  demoNote?: string,
-  today?: string,
-  now?: number,
-): HomeContinueCard[] {
-  const flat = modules.flatMap(m => {
-    const no = new Map(m.topics.map((t, i) => [t.id, i + 1]))
-    return m.topics.map(t => ({ t, module: m.title, no }))
-  })
-  const start = flat.findIndex(x => x.t.id === nextTopicId)
-  if (start < 0) return []
-  return flat.slice(start, start + 3).map(x => ({
-    id: x.t.id, no: x.no.get(x.t.id) ?? 0, title: x.t.title, module: x.module,
-    tile: lessonTile(x.t, today, now, x.no, demoNote),
-  }))
 }
 

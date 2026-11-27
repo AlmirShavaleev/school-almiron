@@ -4,8 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 
 /**
  * §244 (заменяет проверки полки копий §113–§115). Страница «Курсы» у учителя:
- * классы строками, программы, шаблоны с «＋ Класс», прочие курсы, архив и
- * полоса «что требует внимания». Раскладку и подписи проверяет
+ * классы строками, программы, шаблоны с «＋ Класс», прочие курсы и архив.
+ * Раскладку и подписи проверяет
  * `lib/__tests__/coursesOverview.test.ts`; здесь — что страница это рисует,
  * ходит в базу одним вызовом и переживает её отказ.
  */
@@ -120,7 +120,7 @@ describe('Страница «Курсы» (§244)', () => {
 
   it('цифры — одним вызовом базы по курсам со страницы', async () => {
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('60 из 170')
 
     const calls = rpcSpy.mock.calls.filter(c => c[0] === 'teacher_courses_overview')
     expect(calls).toHaveLength(1)
@@ -130,7 +130,7 @@ describe('Страница «Курсы» (§244)', () => {
 
   it('по умолчанию — по классам: копии разных шаблонов с одним именем класса в одной строке', async () => {
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('60 из 170')
 
     const rows = classRows()
     // 11А: 11 + 3 ученика, двое общих ⇒ 12 различных; 10А — 2. Классы — по убыванию учеников.
@@ -147,7 +147,7 @@ describe('Страница «Курсы» (§244)', () => {
 
   it('карточка — настоящая ссылка в курс, полное название — подсказкой', async () => {
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('60 из 170')
 
     const card = screen.getAllByTestId('course-card').find(c => c.getAttribute('data-course-id') === 'copy')!
     expect(card.tagName).toBe('A')
@@ -158,7 +158,7 @@ describe('Страница «Курсы» (§244)', () => {
 
   it('на карточке: ученики, открытые темы, чипы проверки/сдач/плана и метка черновика', async () => {
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('60 из 170')
 
     const byId = (id: string) => screen.getAllByTestId('course-card').find(c => c.getAttribute('data-course-id') === id)!
     const phys = byId('copy')
@@ -178,42 +178,30 @@ describe('Страница «Курсы» (§244)', () => {
     expect(within(ten).getByText('0 сдач за неделю')).toBeInTheDocument()
   })
 
-  it('полоса внимания: ждут проверки → очередь, сдачи за 7 дней, ближайшее открытие → план курса', async () => {
+  it('показывает поиск и список курсов без общей сводки', async () => {
     renderPage()
-    const strip = await screen.findByTestId('courses-attention')
-
-    const pending = within(strip).getByTestId('attention-pending')
-    expect(pending).toHaveAttribute('href', '/homework-queue')
-    expect(pending).toHaveTextContent('17')
-    expect(pending).toHaveTextContent('работ ждут проверки · 2 курса')
-    expect(within(strip).getByTestId('attention-subs')).toHaveTextContent('54сдачи за 7 дней по всем классам')
-    const next = within(strip).getByTestId('attention-next')
-    expect(next).toHaveAttribute('href', '/course-program/mcopy/plan')
-    expect(next).toHaveTextContent('следующее открытие по плану · 11А, Математика · 1 часть')
+    const search = screen.getByRole('searchbox', { name: 'Поиск курсов и классов' })
+    expect(search).toBeVisible()
+    await screen.findByText('60 из 170')
+    expect(screen.queryByTestId('courses-attention')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /работ ждут проверки/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/за 7 дней по всем классам|следующее открытие по плану/)).not.toBeInTheDocument()
+    fireEvent.change(search, { target: { value: 'Курс сам по себе' } })
+    expect(screen.getByRole('link', { name: 'Курс сам по себе' })).toHaveAttribute('href', '/course-program?courseId=plain')
   })
 
-  it('плана открытия нет ни у одного курса — третьей плитки нет', async () => {
-    rpcSpy.mockResolvedValue({ data: OVERVIEW.map(r => ({ ...r, next_open: null })), error: null })
-    renderPage()
-    const strip = await screen.findByTestId('courses-attention')
-
-    expect(within(strip).queryByTestId('attention-next')).not.toBeInTheDocument()
-    expect(within(strip).getByTestId('attention-pending')).toBeInTheDocument()
-  })
-
-  it('база не ответила (функции ещё нет) — курсы на месте, без цифр и без полосы', async () => {
+  it('база не ответила (функции ещё нет) — курсы на месте', async () => {
     rpcSpy.mockResolvedValue({ data: null, error: { message: 'Could not find the function' } })
     renderPage()
 
     await waitFor(() => expect(rpcSpy).toHaveBeenCalled())
     expect(classRows().map(rowName)).toContain('10А')
-    expect(screen.queryByTestId('courses-attention')).not.toBeInTheDocument()
     expect(screen.queryByText(/ждут проверки|нет работ на проверке/)).not.toBeInTheDocument()
   })
 
   it('«По программам»: строка — шаблон, карточки — его классы; выбор запоминается', async () => {
     const { unmount } = renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('60 из 170')
 
     fireEvent.click(screen.getByRole('button', { name: 'По программам' }))
     expect(screen.getByRole('button', { name: 'По программам' })).toHaveAttribute('aria-pressed', 'true')
@@ -237,7 +225,7 @@ describe('Страница «Курсы» (§244)', () => {
     const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied') })
     try {
       renderPage()
-      await screen.findByTestId('courses-attention')
+      await screen.findByText('60 из 170')
       expect(screen.getByTestId('courses-by-class')).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'По программам' }))
       expect(screen.getByTestId('courses-by-program')).toBeInTheDocument()
@@ -249,7 +237,7 @@ describe('Страница «Курсы» (§244)', () => {
 
   it('шаблоны программ: темы и модули, классы ссылками, «Открыть шаблон»', async () => {
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('170 тем · 7 модулей')
 
     const tpl = screen.getAllByTestId('template-card').find(c => within(c).queryByText('Физика ЕГЭ Шаблон'))!
     expect(within(tpl).getByText('170 тем · 7 модулей')).toBeInTheDocument()
@@ -264,7 +252,7 @@ describe('Страница «Курсы» (§244)', () => {
 
   it('«＋ Класс» открывает то же окно копирования курса, что «Скопировать курс…» в настройках', async () => {
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('170 тем · 7 модулей')
 
     const tpl = screen.getAllByTestId('template-card').find(c => within(c).queryByText('Физика ЕГЭ Шаблон'))!
     fireEvent.click(within(tpl).getByTestId('template-add-class'))
@@ -277,13 +265,13 @@ describe('Страница «Курсы» (§244)', () => {
   it('ученику «＋ Класс» не показывается', async () => {
     currentProfile = { id: 'teacher-1', role: 'student' }
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('170 тем · 7 модулей')
     expect(screen.queryByTestId('template-add-class')).not.toBeInTheDocument()
   })
 
   it('курс без шаблона — в «Других курсах» компактной строкой; архив — под спойлером', async () => {
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('физика · 1 тема · без учеников')
 
     const other = screen.getByTestId('courses-other')
     const plain = within(other).getByRole('link', { name: /Курс сам по себе/ })
@@ -295,12 +283,11 @@ describe('Страница «Курсы» (§244)', () => {
     expect(screen.getByRole('link', { name: /Убранный курс/ })).toHaveAttribute('href', '/course-program?courseId=old')
   })
 
-  it('пустой учитель: «Курсов пока нет», без полосы и без переключателя; база не зовётся', async () => {
+  it('пустой учитель: «Курсов пока нет», без переключателя; база не зовётся', async () => {
     currentCourses = []
     renderPage()
 
     expect(screen.getByTestId('courses-empty')).toHaveTextContent('Курсов пока нет')
-    expect(screen.queryByTestId('courses-attention')).not.toBeInTheDocument()
     expect(screen.queryByTestId('courses-view-toggle')).not.toBeInTheDocument()
     expect(rpcSpy).not.toHaveBeenCalled()
   })
@@ -310,7 +297,7 @@ describe('Страница «Курсы» (§244)', () => {
     currentCourses = COURSES.map(c => (c.id === 'copy10' ? { ...c, owner_id: 'admin-1' } : c))
     profilesRows = [{ id: 'teacher-1', full_name: 'Иванова Мария' }, { id: 'admin-1', full_name: 'Админ' }]
     renderPage()
-    await screen.findByTestId('courses-attention')
+    await screen.findByText('60 из 170')
 
     const byId = (id: string) => screen.getAllByTestId('course-card').find(c => c.getAttribute('data-course-id') === id)!
     await waitFor(() => expect(within(byId('copy')).getByTestId('course-owner')).toHaveTextContent('Иванова Мария'))

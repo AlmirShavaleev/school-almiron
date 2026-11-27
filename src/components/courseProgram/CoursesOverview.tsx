@@ -5,15 +5,14 @@ import { GraduationCap, Plus } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import type { Course } from '@/hooks/useCourseProgram'
 import {
-  buildAttention, courseChips, coursesLabel, formatDayMonth, modulesLabel, nextTileLabel,
-  otherCourseLabel, pendingTileLabel, programGenitive, studentsLabel, subsTileLabel, topicsLabel,
-  type Attention, type Chip, type CourseCardData, type CoursesLayout, type CourseStat, type CourseStats,
+  courseChips, coursesLabel, modulesLabel, otherCourseLabel, programGenitive, studentsLabel, topicsLabel,
+  type Chip, type CourseCardData, type CoursesLayout, type CourseStat,
   type ProgramInfo, type SubjectTone,
 } from '@/lib/coursesOverview'
 
 /**
- * §244. Список курсов учителя: полоса «что требует внимания», классы (или
- * программы), шаблоны, прочие курсы, архив. Раскладку считает
+ * §244. Список курсов учителя: классы (или программы), шаблоны, прочие курсы,
+ * архив. Раскладку считает
  * `buildCoursesLayout` (lib/coursesOverview), здесь только отрисовка.
  *
  * Каждая карточка курса — `<Link>`, не кнопка: Ctrl+клик и средняя кнопка
@@ -207,31 +206,6 @@ function Row({ name, sub, children, testId }: { name: string; sub: string; child
   )
 }
 
-// ─── Полоса внимания ────────────────────────────────────────────────────────
-
-function AttentionStrip({ a, today }: { a: Attention; today: string }) {
-  const tile = 'grid gap-0.5 rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-left'
-  const link = 'transition-colors hover:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400'
-  return (
-    <div data-testid="courses-attention" className={cn('grid gap-3', a.next ? 'md:grid-cols-3' : 'md:grid-cols-2')}>
-      <Link to="/homework-queue" data-testid="attention-pending" className={cn(tile, link)}>
-        <span className={cn('text-2xl font-extrabold tabular-nums leading-tight', a.pending > 0 ? 'text-verdict-part-ink' : 'text-gray-900')}>{a.pending}</span>
-        <span className="text-sm text-gray-500">{pendingTileLabel(a)}</span>
-      </Link>
-      <div data-testid="attention-subs" className={tile}>
-        <span className="text-2xl font-extrabold tabular-nums leading-tight text-gray-900">{a.subs7d}</span>
-        <span className="text-sm text-gray-500">{subsTileLabel(a)}</span>
-      </div>
-      {a.next && (
-        <Link to={`/course-program/${a.next.courseId}/plan`} data-testid="attention-next" className={cn(tile, link)}>
-          <span className="text-2xl font-extrabold tabular-nums leading-tight text-gray-900">{formatDayMonth(a.next.date, today)}</span>
-          <span className="text-sm text-gray-500">{nextTileLabel(a.next)}</span>
-        </Link>
-      )}
-    </div>
-  )
-}
-
 // ─── Вся страница списка ────────────────────────────────────────────────────
 
 function mskToday(): string {
@@ -239,10 +213,9 @@ function mskToday(): string {
 }
 
 export function CoursesOverview({
-  layout, stats, statsLoading, view, ownerLabelFor, canAddClass, onAddClass,
+  layout, statsLoading, view, ownerLabelFor, canAddClass, onAddClass,
 }: {
   layout: CoursesLayout<Course>
-  stats: CourseStats | null
   statsLoading: boolean
   view: CoursesView
   ownerLabelFor: (c: Course) => string | null
@@ -256,15 +229,12 @@ export function CoursesOverview({
     ...layout.classes.flatMap(row => row.slots.flatMap(s => s.kind === 'course' ? [s.card.course] : [])),
   ].map(c => [c.id, c])).values()]
   const needle = query.trim().toLocaleLowerCase('ru')
-  const matches = allCourses.filter(c => `${c.title} ${ownerLabelFor(c) ?? ''}`.toLocaleLowerCase('ru').includes(needle))
+  const classNames = new Map(layout.programs.flatMap(row => row.cards.map(card => [card.course.id, card.className] as const)))
+  const matches = allCourses.filter(c =>
+    `${c.title} ${classNames.get(c.id) ?? ''} ${ownerLabelFor(c) ?? ''}`.toLocaleLowerCase('ru').includes(needle))
   const today = mskToday()
-  const attention = buildAttention(layout, stats)
-  const hasLive = layout.classes.length > 0 || layout.other.length > 0
-
   return (
     <div className="grid min-w-0 gap-7">
-      {attention && hasLive && <AttentionStrip a={attention} today={today} />}
-
       <input type="search" aria-label="Поиск курсов и классов" placeholder="Найти курс, класс или преподавателя" value={query} onChange={e => setQuery(e.target.value)} className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:ring-2 focus:ring-primary-400" />
       {needle ? <section className="grid gap-3"><p className="text-sm text-gray-500">Найдено: {matches.length}</p>{matches.map(c => <CompactCourse key={c.id} course={c} program={null} sub={null} ownerLabel={ownerLabelFor(c)} />)}</section> : <>
       {view === 'classes' && layout.classes.length > 0 && (

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { StudentsPage } from '@/pages/StudentsPage'
 import { useAuthStore } from '@/store/authStore'
@@ -15,6 +15,8 @@ vi.mock('@/hooks/useGroups', () => ({
     groups: [
       { id: 'group-1', name: '11А', course_id: 'course-1', courses: { title: 'Физика' } },
       { id: 'group-2', name: '10Б', course_id: null, courses: null },
+      { id: 'group-3', name: 'Ученики 2026-2027', course_id: 'course-2', courses: { title: 'Математика' } },
+      { id: 'group-4', name: 'Ученики 2026-2027', course_id: 'course-3', courses: { title: 'Математика, часть 2' } },
     ],
   }),
 }))
@@ -105,6 +107,40 @@ describe('StudentsPage', () => {
     // §84: карточки заменены строкой списка, и ссылкой на профиль стало само
     // ФИО — отдельной надписи «Открыть профиль» больше нет.
     expect(await screen.findByText('Иван Петров')).toHaveAttribute('href', '/students/student-1')
+  })
+
+  it('связывает группы с их курсами и различает одинаковые названия в фильтре', async () => {
+    getMyStudents.mockResolvedValue([
+      {
+        studentId: 'student-1', fullName: 'Иван Петров',
+        groups: [
+          { id: 'group-1', name: '11А' },
+          { id: 'group-3', name: 'Ученики 2026-2027' },
+        ],
+        courses: [{ id: 'course-2', title: 'Математика' }, { id: 'course-1', title: 'Физика' }],
+      },
+      {
+        studentId: 'student-2', fullName: 'Анна Орлова',
+        groups: [{ id: 'group-4', name: 'Ученики 2026-2027' }],
+        courses: [{ id: 'course-3', title: 'Математика, часть 2' }],
+      },
+    ])
+    getMyStudentInvites.mockResolvedValue([])
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>)
+
+    const row = (await screen.findByRole('link', { name: 'Иван Петров' })).closest('tr')!
+    const enrollments = within(row).getByRole('list', { name: 'Зачисления' })
+    expect(within(enrollments).getAllByRole('listitem').map(item => item.textContent)).toEqual([
+      'МатематикаГруппа «Ученики 2026-2027»',
+      'ФизикаГруппа «11А»',
+    ])
+
+    const filter = screen.getByRole('combobox', { name: 'Фильтр по группе' })
+    expect(within(filter).getByRole('option', { name: 'Ученики 2026-2027 · Математика' })).toHaveValue('group-3')
+    expect(within(filter).getByRole('option', { name: 'Ученики 2026-2027 · Математика, часть 2' })).toHaveValue('group-4')
+    fireEvent.change(filter, { target: { value: 'group-4' } })
+    expect(screen.getByRole('link', { name: 'Анна Орлова' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Иван Петров' })).not.toBeInTheDocument()
   })
 
   it('shows empty state for students', async () => {

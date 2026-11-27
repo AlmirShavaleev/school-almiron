@@ -4,6 +4,7 @@ import { AlertCircle, Check, FileText, Loader2, Lock, Pencil, Plus, Shuffle, Tra
 import { Button } from '@/components/ui/Button'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
 import { VerdictMark } from '@/components/ui/VerdictMark'
+import { MockExamParticipants, type ExamParticipant } from '@/components/mockExams/MockExamParticipants'
 import { useAuthStore } from '@/store/authStore'
 import { useMockExamTemplates } from '@/hooks/useMockExamTemplates'
 import { useMockExamGroups } from '@/hooks/useMockExamGroups'
@@ -87,7 +88,12 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
   const navigate = useNavigate()
   const { templates, loading: tplLoading } = useMockExamTemplates(true)
   const { groups, loading: grLoading } = useMockExamGroups()
-  const [picked, setPicked] = useState<string[]>(defaultGroupId ? [defaultGroupId] : [])
+  const [openGroupId, setOpenGroupId] = useState(defaultGroupId)
+  const [participantDraft, setParticipantDraft] = useState<ExamParticipant[] | null>(null)
+  const defaultGroup = groups.find(g => g.id === defaultGroupId)
+  const rosterGroups = [openGroupId, participantDraft === null ? defaultGroup?.id : null]
+  const { rosters, loading: rosterLoading, error: rosterError, retry: retryRoster } = useGroupRosters([...new Set(rosterGroups.filter((id): id is string => !!id))])
+  const participants = participantDraft ?? (defaultGroup ? (rosters[defaultGroup.id] ?? []).map(student => ({ ...student, groupId: defaultGroup.id })) : [])
   const [drafts, setDrafts] = useState<DraftVariant[]>([emptyDraft()])
   const [multi, setMulti] = useState(false)
   const [vMode, setVMode] = useState<VariantMode>('order')
@@ -105,20 +111,16 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
 
   const template = templates.find(t => t.id === f.templateId) ?? null
   const n = template?.part1_last ?? 0
-  const chosen = groups.filter(g => picked.includes(g.id))
+  const rosterByGroup: Record<string, ExamParticipant[]> = {}
+  for (const student of participants) (rosterByGroup[student.groupId] ??= []).push(student)
+  const chosen = groups.filter(g => rosterByGroup[g.id]?.length)
   const shown = multi ? drafts : drafts.slice(0, 1)
   const positions = shown.map((_, k) => k + 1)
-  const { rosters } = useGroupRosters(multi ? picked : [])
-
   // Раздача по группам: по выбранному способу; «Вручную» — как поправили.
-  const chosenKey = picked.slice().sort().join(',')
-  const nVariants = shown.length
-  // Считается заново на каждый рендер: учеников десятки, а «случайно» повторяемо (seed).
   const assignments: Record<string, Record<string, number>> = {}
-  if (multi && chosenKey) {
-    const pos = Array.from({ length: nVariants }, (_, k) => k + 1)
-    for (const gid of chosenKey.split(',')) {
-      assignments[gid] = distributeVariants(rosters[gid] ?? [], pos, vMode, { current: manual[gid], rng: seeded(seed + hashOf(gid)) })
+  if (multi) {
+    for (const g of chosen) {
+      assignments[g.id] = distributeVariants(rosterByGroup[g.id], positions, vMode, { current: manual[g.id], rng: seeded(seed + hashOf(g.id)) })
     }
   }
 
@@ -140,6 +142,7 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
     setStatus(null)
     const problems = assignProblems({
       title: f.title, templateId: f.templateId, groups: chosen.length, startsIso: f.startsIso, draft, durationOk: f.durationOk,
+      missingGroupMessage: 'Выберите учеников в одной или нескольких группах',
       missingCondition: multi ? missingConditions(ready) : [],
       variantNames: namesOf(ready),
     })
@@ -147,7 +150,7 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
     if (!template || !profile) return
     setBusy(draft ? 'draft' : 'assign')
     const res = await createMockExams({
-      title: f.title, template, groups: chosen.map(g => ({ id: g.id, name: g.name })),
+      title: f.title, template, groups: chosen.map(g => ({ id: g.id, name: g.name, studentIds: rosterByGroup[g.id].map(student => student.id) })),
       startsAt: draft ? null : f.startsIso,
       plannedAt: f.plannedIso,
       durationMinutes: f.duration,
@@ -172,22 +175,12 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
       fields={(
         <>
           <TitleTemplate f={f} templates={templates} templateLocked={false} />
-          <Field label="Группа" as="div">
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Группы" data-testid="mock-form-groups">
-              {groups.length === 0 && <span className="text-sm text-graphite-500">Групп нет — пробник проводится у группы курса.</span>}
-              {groups.map(g => (
-                <Chip key={g.id} pressed={picked.includes(g.id)} testid="mock-form-group-chip"
-                  onClick={() => setPicked(p => (p.includes(g.id) ? p.filter(x => x !== g.id) : [...p, g.id]))}>
-                  {picked.includes(g.id) && <Check size={13} aria-hidden />}{g.name}
-                  {g.count != null && <span className="font-medium text-graphite-400">{g.count}</span>}
-                </Chip>
-              ))}
-            </div>
-            <Hint>
-              Пробник появится у группы в меню «Пробники» и в разделе «Пробники» её курса. Отметили несколько групп — у
-              каждой будет свой пробник с теми же вариантами, файлами и ключами. Группу можно сменить, пока нет баллов.
-            </Hint>
-          </Field>
+          <MockExamParticipants
+            groups={groups} openGroupId={openGroupId} onOpen={setOpenGroupId}
+            participants={participants} onChange={setParticipantDraft}
+            roster={openGroupId ? rosters[openGroupId] ?? [] : []}
+            loading={rosterLoading} error={rosterError} onRetry={retryRoster} disabled={busy != null}
+          />
           <WhenFields f={f} warning={startNoticeWarning(f.startsIso, f.nowMs)} />
         </>
       )}
@@ -224,7 +217,7 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
           </VariantsCard>
           {multi && (
             <DistributionCard
-              groups={chosen.map(g => ({ id: g.id, name: g.name, roster: rosters[g.id] ?? [] }))}
+              groups={chosen.map(g => ({ id: g.id, name: g.name, roster: rosterByGroup[g.id] }))}
               positions={positions}
               names={namesOf(ready)}
               mode={vMode}
@@ -246,9 +239,9 @@ function CreateForm({ defaultGroupId }: { defaultGroupId: string | null }) {
             groups: chosen.length, startsIso: f.startsIso, hasCondition: !!shown[0].condition, hasSolution: !!shown[0].solution,
             keyFilled: keyFilled(shown[0].key, n), keyTotal: n, variants: ready,
           })}
-          primary={{ label: chosen.length > 1 ? `Назначить пробник · ${chosen.length} ${plural(chosen.length, 'группа', 'группы', 'групп')}` : 'Назначить пробник', onClick: () => submit(false), busy: busy === 'assign' }}
+          primary={{ label: participants.length ? `Назначить пробник · ${studentsLabel(participants.length)}` : 'Назначить пробник', onClick: () => submit(false), busy: busy === 'assign' }}
           quiet={{ label: 'Сохранить черновиком', onClick: () => submit(true), busy: busy === 'draft' }}
-          disabled={busy != null}
+          disabled={busy != null || (participantDraft === null && !!defaultGroup && !rosters[defaultGroup.id] && rosterLoading)}
           status={status}
         />
       )}
@@ -291,6 +284,8 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
   })
   const { groups } = useMockExamGroups(exam.group_id ? { id: exam.group_id, name: exam.groupName ?? 'группа' } : null)
   const [groupId, setGroupId] = useState(exam.group_id ?? '')
+  const [openRoster, setOpenRoster] = useState(true)
+  const [editedParticipants, setEditedParticipants] = useState<{ groupId: string; members: ExamParticipant[] } | null>(null)
   const [busy, setBusy] = useState<'assign' | 'draft' | null>(null)
   const [status, setStatus] = useState<{ kind: 'error' | 'warn' | 'ok'; text: string } | null>(null)
   const [vBusy, setVBusy] = useState<string | null>(null)
@@ -302,6 +297,7 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
   const scheduled = !!exam.starts_at
   const notStarted = !exam.starts_at || Date.parse(exam.starts_at) > f.nowMs
   const groupName = groups.find(g => g.id === groupId)?.name ?? exam.groupName
+  const rosterEditable = !!groupId && notStarted && !hasWork
 
   const items = vh.variants
   const multi = items.length > 1
@@ -317,8 +313,14 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
 
   // Раздача. Пока не трогали — как в базе (кому не выдано — по выбранному
   // способу); нажали способ или поменяли ученику — черновик.
-  const { rosters } = useGroupRosters(multi && groupId ? [groupId] : [])
-  const roster: RosterStudent[] = rosters[groupId] ?? []
+  const showRoster = !!groupId && (rosterEditable || exam.participantIds !== null)
+  const { rosters, loading: rosterLoading, error: rosterError, retry: retryRoster } = useGroupRosters((showRoster || multi) && groupId ? [groupId] : [])
+  const groupRoster = rosters[groupId] ?? []
+  const savedIds = exam.participantIds === null ? null : new Set(exam.participantIds)
+  const savedRoster = savedIds === null ? groupRoster : groupRoster.filter(student => savedIds.has(student.id))
+  const editedRoster = editedParticipants?.groupId === groupId ? editedParticipants.members : null
+  const roster = editedRoster ?? savedRoster
+  const participants = roster.map(student => ({ ...student, groupId }))
   const firstPos = Math.min(...positions)
   const lockedPos: Record<string, number> = {}
   for (const s of roster) if (vh.locked.has(s.id)) lockedPos[s.id] = vh.assigned[s.id] ?? firstPos
@@ -329,7 +331,7 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
   // Набор вариантов, с которым вкладка открылась. Добавили или убрали вариант —
   // раскладка «с нуля» тем же способом (кроме уже открывших), пока не тронули руками.
   const [openedPos] = useState(posKey)
-  const shownAssign = draft && draft.pos === posKey ? draft.assign
+  const shownAssign = draft && draft.pos === posKey ? distributeVariants(roster, positions, 'manual', { locked: lockedPos, current: draft.assign })
     : posKey !== openedPos ? distributeVariants(roster, positions, vMode === 'manual' ? 'order' : vMode, { locked: lockedPos, rng: seeded(seed) })
       : distributeVariants(roster, positions, 'manual', { locked: lockedPos, current: vh.assigned })
   const setDraftAssign = (assign: Record<string, number> | null) => setDraft(assign ? { pos: posKey, assign } : null)
@@ -348,18 +350,26 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
       missingCondition: multi ? missingConditions(ready) : [],
       variantNames: namesOf(ready),
     })
+    if (rosterEditable && !draft && !participants.length && (exam.participantIds !== null || editedRoster !== null || !scheduled)) {
+      problems.push('Выберите хотя бы одного ученика')
+    }
+    if (editedRoster && !rosterEditable) problems.push('Список участников можно изменить до начала пробника')
     if (problems.length) { setStatus({ kind: 'error', text: problems.join('. ') + '.' }); return }
     const newStart = draft ? null : f.startsIso
     // §224.2: предупреждение — только о НОВОМ времени; после сохранения оно переезжает в статус.
-    const warning = !draft && startChanged ? startNoticeWarning(newStart, Date.now()) : null
+    const warning = !draft && startChanged ? startNoticeWarning(newStart, f.nowMs) : null
     setBusy(draft ? 'draft' : 'assign')
     const r = await onSave({
       title: f.title, starts_at: newStart, duration_minutes: f.duration,
       template_id: f.templateId || null, date: f.plannedIso,
       ...(groupId && groupId !== exam.group_id ? { group_id: groupId } : {}),
       ...(multi && vMode !== vh.mode && !vh.unavailable ? { variant_mode: vMode } : {}),
+      ...(rosterEditable && (editedRoster !== null || (!draft && !scheduled))
+        ? { participantIds: participants.map(student => student.id) }
+        : {}),
     })
     if (r.error) { setBusy(null); setStatus({ kind: 'error', text: `Не сохранено: ${r.error}` }); return }
+    setEditedParticipants(null)
     let note = ''
     for (const v of items) {
       if (!keyDirty(v)) continue
@@ -396,7 +406,7 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
       fields={(
         <>
           <TitleTemplate f={f} templates={templates} templateLocked={hasScores} />
-          <Field label="Группа" as="div">
+          {exam.participantIds === null && <Field label="Группа" as="div">
             <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Группа" data-testid="mock-form-groups">
               {groups.map(g => (
                 <Chip key={g.id} pressed={groupId === g.id} testid="mock-form-group-chip" role="radio"
@@ -411,7 +421,18 @@ function EditFormLoaded({ exam, hasScores, hasWork, templates, onSave, variants:
                 ? 'У пробника уже есть работы или баллы — группу не сменить. Для другой группы заведите новый пробник.'
                 : `Появится у группы ${groupName ?? ''} в меню «Пробники» и в разделе «Пробники» её курса. Группу можно сменить, пока нет баллов.`}
             </Hint>
-          </Field>
+          </Field>}
+          {showRoster && (
+            <MockExamParticipants
+              groups={groups.filter(group => group.id === groupId)}
+              openGroupId={openRoster && rosterEditable ? groupId : null}
+              onOpen={id => setOpenRoster(!!id)}
+              participants={participants}
+              onChange={members => setEditedParticipants({ groupId, members })}
+              roster={groupRoster} loading={rosterLoading} error={rosterError} onRetry={retryRoster}
+              disabled={busy != null} readOnly={!rosterEditable}
+            />
+          )}
           <WhenFields f={f} warning={startChanged ? startNoticeWarning(f.startsIso, f.nowMs) : null} />
         </>
       )}

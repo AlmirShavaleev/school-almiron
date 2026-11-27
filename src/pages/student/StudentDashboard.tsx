@@ -6,7 +6,7 @@ import { useStudentHomeCourses } from '@/hooks/useStudentHomeCourses'
 import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { useStudentActivity } from '@/hooks/useStudentActivity'
-import { CourseProgressCard } from '@/components/student/home/CourseProgressCard'
+import { StudentWorkPlanHome } from '@/components/workPlans/StudentWorkPlan'
 import { examCountdown } from '@/lib/examCountdown'
 import { mskDateKey } from '@/lib/homeworkDeadline'
 import { continueHref, primaryContinue } from '@/lib/studentHomeCourses'
@@ -16,7 +16,6 @@ import { SubscriptionPathCard } from '@/components/student/home/SubscriptionPath
 import { DiagnosticHomeCard } from '@/components/student/home/DiagnosticHomeCard'
 import { CourseChip, HomeCoverBlock, HomeTitle, type HomeProp } from '@/components/student/home/HomeNotionHead'
 import { ClockWidget, ExamWidget, MonthWidget } from '@/components/student/home/HomeWidgets'
-import { HomeContinue } from '@/components/student/home/HomeContinue'
 import { TelegramOnboarding } from '@/components/shared/TelegramOnboarding'
 import { EXAM_DAYS, examWidget } from '@/lib/examDates'
 import { activityDaysFor, streakValue } from '@/lib/homeNotion'
@@ -47,8 +46,7 @@ const ENABLE_HEAVY_STUDENT_HOME_STATS = !import.meta.env.PROD
  *     как раньше;
  *  4. три виджета: «До ЕГЭ» (даты — src/lib/examDates.ts), часы с фразой дня,
  *     мини-календарь месяца посещений (та же `student_home_activity`);
- *  5. «Продолжить» — три урока с тем же статусом и замком, что в плитках курса;
- *  6. «Мои курсы».
+ *  5. «Мой план работы».
  *
  * Недельные цели и список «Сегодня» отключены: главная не загружает
  * недельный прогресс и журнал ДЗ для этих блоков.
@@ -72,13 +70,6 @@ export function StudentDashboard() {
 
   const progress = useMemo(() => homeCourses.courses ?? [], [homeCourses.courses])
   const next = useMemo(() => primaryContinue(courses, progress), [courses, progress])
-  const items = useMemo(() => {
-    const byId = new Map(progress.map(p => [p.courseId, p]))
-    return courses.map(c => ({
-      courseId: c.courseId, groupId: c.groupId, title: c.courseTitle, subject: c.subject,
-      progress: byId.get(c.courseId) ?? null,
-    }))
-  }, [courses, progress])
 
   // Календарь месяца листает до 3 месяцев назад — история с 1-го числа.
   const activity = useStudentActivity(ENABLE_HEAVY_STUDENT_HOME_STATS && !!profile?.id, todayMsk, activityDaysFor(todayMsk))
@@ -127,8 +118,9 @@ export function StudentDashboard() {
   const props: HomeProp[] = []
   if (hasCourses && goals) {
     const basis = goals.exam.map(g => {
-      const it = items.find(i => i.subject === g.subject)
-      return it?.progress ? goalBasis(null, { done: it.progress.done, total: it.progress.total }) : null
+      const course = courses.find(c => c.subject === g.subject)
+      const courseProgress = progress.find(p => p.courseId === course?.courseId)
+      return courseProgress ? goalBasis(null, courseProgress) : null
     }).filter(Boolean).join('; ')
     props.push({
       key: 'goal', icon: 'target', label: 'Цель',
@@ -198,11 +190,7 @@ export function StudentDashboard() {
         )}
       </div>
 
-      {next && (
-        <HomeContinue groupId={next.course.groupId} courseId={next.course.courseId} courseTitle={next.course.courseTitle} nextTopicId={next.next.topicId} />
-      )}
-
-      <CourseProgressCard items={items} mainCourseId={next?.course.courseId ?? null} />
+      <StudentWorkPlanHome data={homeCourses.workPlans} />
     </div>
   )
 }

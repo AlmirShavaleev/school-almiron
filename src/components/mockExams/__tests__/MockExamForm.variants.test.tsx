@@ -29,7 +29,6 @@ function chain(table: string) {
   const result = () => {
     if (op === 'insert') {
       const rows = payload as Record<string, unknown>[]
-      if (table === 'mock_exams') { inserted.push(rows); return { data: rows.map((r, i) => ({ id: `new-${i + 1}`, group_id: r.group_id })), error: null } }
       ;(insertsBy[table] ??= []).push(rows)
       if (table === 'mock_exam_variants') return { data: rows.map(r => ({ id: `var-${r.mock_exam_id}-${r.position}`, mock_exam_id: r.mock_exam_id, position: r.position })), error: null }
       return { data: rows, error: null }
@@ -64,6 +63,11 @@ vi.mock('@/lib/supabase', () => ({
     from: (t: string) => chain(t),
     rpc: (fn: string, args: Record<string, unknown>) => {
       rpcCalls.push({ fn, args })
+      if (fn === 'create_mock_exams_for_participants') {
+        const rows = args.p_exams as Record<string, unknown>[]
+        inserted.push(rows)
+        return Promise.resolve({ data: rows.map((r, i) => ({ id: `new-${i + 1}`, group_id: r.group_id })), error: null })
+      }
       return Promise.resolve({ data: { not_checkable: [], grade: { changed_cells: 0, graded_students: 0 } }, error: null })
     },
     storage: {

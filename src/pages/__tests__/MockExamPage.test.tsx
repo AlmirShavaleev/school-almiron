@@ -8,6 +8,8 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { examRow, fakeSupabase, PHOTOS, resultsAfter, ROSTER, scoresAfter, sheetsAfter, type Db } from './mockExamV3Fixture'
 
 let db: Db
+const { exportTable } = vi.hoisted(() => ({ exportTable: vi.fn() }))
+vi.mock('@/utils/exportExcel', () => ({ exportMockExamTable: exportTable }))
 vi.mock('@/lib/supabase', async () => ({ supabase: fakeSupabase(() => db) }))
 vi.mock('@/hooks/useMockExamLive', () => ({ useMockExamLive: () => ({ live: null, error: null, offset: 0 }) }))
 vi.mock('@/pages/MockExamGridPage', () => ({ MockExamGridPage: ({ embedded }: { embedded?: boolean }) => <div data-testid="grid-stub" data-embedded={embedded} /> }))
@@ -117,6 +119,11 @@ describe('вкладки', () => {
     expect(within(table).getByText('Нужна практика')).toBeInTheDocument()
     expect(screen.queryByTestId('mock-stepper')).not.toBeInTheDocument()
     expect(db.rpcCalls).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Скачать Excel' }))
+    await waitFor(() => expect(exportTable).toHaveBeenCalledWith(
+      expect.objectContaining({ maxScore: 100 }),
+      expect.objectContaining({ rows: [['Гарипов Тимур', 82, 100, 42, 40, 'Нужна практика']] }),
+    ))
   })
 
   it('«Таблица баллов» — таблица §218 встроенной; «Настройка» — форма этого пробника', async () => {

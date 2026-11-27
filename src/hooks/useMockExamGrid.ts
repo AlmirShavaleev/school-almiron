@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { MockExamResultNotifyRow, NotifySummary } from '@/lib/mockExamNotify'
 import { variantName } from '@/lib/mockExamVariants'
+import { readMockExamRows } from '@/lib/mockExamRead'
 
 /**
  * §218. Данные экрана «пробник по номерам»: пробник, его шаблон, ученики
@@ -62,6 +63,8 @@ type Resp<T> = Promise<{ data: T | null; error: { message?: string; code?: strin
 interface Chain<T> extends PromiseLike<{ data: T | null; error: { message?: string } | null }> {
   select(columns: string): Chain<T>
   eq(column: string, value: string): Chain<T>
+  order(column: string): Chain<T>
+  range(from: number, to: number): Chain<T>
   maybeSingle(): Resp<T>
 }
 interface DbLike {
@@ -106,10 +109,11 @@ export function useMockExamGrid(examId: string | undefined) {
   const [resultsError, setResultsError] = useState<string | null>(null)
 
   const loadResults = useCallback(async (id: string) => {
-    const { data, error: rErr } = await db
+    const { data, error: rErr } = await readMockExamRows((from, to) => db
       .from<MockExamResultNotifyRow[]>('mock_exam_results')
       .select(RESULT_COLUMNS)
       .eq('mock_exam_id', id)
+      .order('student_id').range(from, to))
     if (rErr) { setResultsError(rErr.message || 'Не удалось загрузить итоги'); return }
     setResultsError(null)
     const map: Record<string, MockExamResultNotifyRow> = {}
@@ -125,7 +129,7 @@ export function useMockExamGrid(examId: string | undefined) {
     ;(async () => {
       const { data: e, error: eErr } = await db
         .from<Record<string, any>>('mock_exams')
-        .select('id, title, date, subject, exam_type, group_id, template_id, groups(name), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)')
+        .select('id, title, date, subject, exam_type, group_id, template_id, groups(name), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale), mock_exam_rosters(student_ids)')
         .eq('id', examId)
         .maybeSingle()
       if (cancelled) return
@@ -168,15 +172,19 @@ export function useMockExamGrid(examId: string | undefined) {
       let wk: Record<string, GridWork> = {}
       let vars: { of: Record<string, number>; count: number; names: Record<number, string> } = { of: {}, count: 0, names: {} }
       if (ex.group_id && template) {
-        const [{ data: gs }, { data: scores, error: sErr }] = await Promise.all([
-          db.from<any[]>('group_students')
+        const [{ data: gs, error: groupError }, { data: scores, error: sErr }] = await Promise.all([
+          readMockExamRows((from, to) => db.from<any[]>('group_students')
             .select('student_id, students(id, profile_id, profiles(full_name))')
-            .eq('group_id', ex.group_id),
+            .eq('group_id', ex.group_id!)
+            .order('student_id').range(from, to)),
           loadScores(ex.id),
         ])
         if (cancelled) return
+        if (groupError) { setError(groupError.message || 'Не удалось загрузить учеников'); setLoading(false); return }
         if (sErr) { setError(sErr.message || 'Не удалось загрузить баллы'); setLoading(false); return }
-        roster = (gs ?? []).map((g: any) => ({
+        const participantIds = e.mock_exam_rosters?.student_ids as string[] | undefined
+        const selected = participantIds ? new Set(participantIds) : null
+        roster = (gs ?? []).filter(g => !selected || selected.has(g.student_id)).map((g: any) => ({
           id: g.student_id,
           profileId: g.students?.profile_id ?? null,
           name: g.students?.profiles?.full_name || '—',
@@ -282,13 +290,13 @@ type ScoreRow = { student_id: string; task_number: number; points: number; auto_
  * применения PENDING_221.sql нет — тогда читаем как в §218, без отметок.
  */
 async function loadScores(examId: string): Promise<{ data: ScoreRow[] | null; error: { message?: string } | null }> {
-  const withAuto = await db.from<ScoreRow[]>('mock_exam_task_scores')
-    .select('student_id, task_number, points, auto_points')
+  const read = (columns: string) => readMockExamRows((from, to) => db.from<ScoreRow[]>('mock_exam_task_scores')
+    .select(columns)
     .eq('mock_exam_id', examId)
+    .order('student_id').order('task_number').range(from, to))
+  const withAuto = await read('student_id, task_number, points, auto_points')
   if (!withAuto.error) return withAuto
-  return db.from<ScoreRow[]>('mock_exam_task_scores')
-    .select('student_id, task_number, points')
-    .eq('mock_exam_id', examId)
+  return read('student_id, task_number, points')
 }
 
 async function loadLesson(examId: string): Promise<GridLesson | null> {
@@ -331,7 +339,8 @@ async function loadVariants(examId: string, studentIds: string[]): Promise<{ of:
   try {
     ;[v, a] = await Promise.all([
       db.from<{ id: string; position: number; label?: string | null }[]>('mock_exam_variants').select('id, position, label').eq('mock_exam_id', examId),
-      db.from<{ student_id: string; variant_id: string }[]>('mock_exam_variant_students').select('student_id, variant_id').eq('mock_exam_id', examId),
+      readMockExamRows((from, to) => db.from<{ student_id: string; variant_id: string }[]>('mock_exam_variant_students')
+        .select('student_id, variant_id').eq('mock_exam_id', examId).order('student_id').range(from, to)),
     ])
   } catch {
     return { of: {}, count: 0, names: {} }

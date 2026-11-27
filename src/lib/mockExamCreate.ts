@@ -13,7 +13,7 @@ import type { MockExamTemplate } from '@/hooks/useMockExamGrid'
  * свои уведомления — поэтому отдельные строки `mock_exams`, а не одна на все.
  *
  * Порядок:
- *  1. все строки — ОДНОЙ вставкой (одна транзакция: либо все группы, либо ни
+ *  1. пробники и списки участников — одной транзакцией (либо все группы, либо ни
  *     одной — не бывает «11А назначен, 11Б нет» из-за сбоя посередине);
  *  2. §229: варианты — одной вставкой, у каждого пробника свои строки;
  *  3. условие, решение, критерии — в папку варианта КАЖДОГО пробника
@@ -40,7 +40,7 @@ export interface CreateVariantInput {
 export interface CreateInput {
   title: string
   template: MockExamTemplate
-  groups: { id: string; name: string }[]
+  groups: { id: string; name: string; studentIds: string[] }[]
   /** Момент начала; null — черновик (ученики не видят). */
   startsAt: string | null
   /** Задуманный момент черновика — пишется в `date`, чтобы форма его помнила. */
@@ -106,9 +106,10 @@ export async function createMockExams(input: CreateInput): Promise<CreateResult>
     created_by: tc?.id ?? null,
     starts_at: input.startsAt,
     duration_minutes: input.durationMinutes,
+    student_ids: g.studentIds,
     ...(multi ? { variant_mode: input.variantMode } : {}),
   }))
-  const { data, error } = await db.from<{ id: string; group_id: string }[]>('mock_exams').insert(rows).select('id, group_id')
+  const { data, error } = await db.rpc<{ id: string; group_id: string }[]>('create_mock_exams_for_participants', { p_exams: rows })
   if (error || !data) return { created: [], problems: [], error: error?.message || 'Пробник не создан' }
   const created = input.groups.map((g, i) => {
     const row = data.find(r => r.group_id === g.id) ?? data[i]

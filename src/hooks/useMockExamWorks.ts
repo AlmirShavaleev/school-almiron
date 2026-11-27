@@ -8,6 +8,7 @@ import type { MockExamTemplate } from '@/hooks/useMockExamGrid'
 import type { MockExamResultNotifyRow, NotifySummary } from '@/lib/mockExamNotify'
 import { windowOf, type ExamWindow, type WorkInput } from '@/lib/mockExamV3'
 import type { Tables } from '@/types/database'
+import { readMockExamRows } from '@/lib/mockExamRead'
 
 /**
  * §228. Данные страницы пробника («Работы») и экрана проверки работы: пробник,
@@ -118,7 +119,7 @@ export function useMockExamWorks(examId: string | undefined) {
     ;(async () => {
       setError(null)
       const { data: e, error: eErr } = await db.from<any>('mock_exams')
-        .select('id, title, date, max_score, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale)')
+        .select('id, title, date, max_score, group_id, template_id, starts_at, duration_minutes, photo_grace_minutes, condition_path, solution_path, groups(name, course_id), mock_exam_templates(id, title, subject, exam_type, year, max_points, part1_last, score_scale), mock_exam_rosters(student_ids)')
         .eq('id', examId).maybeSingle()
       if (cancelled) return
       if (eErr || !e) { setError(eErr?.message || 'Пробник не найден'); setLoading(false); return }
@@ -131,9 +132,10 @@ export function useMockExamWorks(examId: string | undefined) {
         condition_path: e.condition_path ?? null, solution_path: e.solution_path ?? null,
       }
       if (!ex.group_id || !template) {
-        const { data, error: resultError } = await supabase.from('mock_exam_results')
+        const { data, error: resultError } = await readMockExamRows((from, to) => supabase.from('mock_exam_results')
           .select('student_id, score, part1_score, part2_score, notes, students(profiles(full_name))')
           .eq('mock_exam_id', ex.id)
+          .order('student_id').range(from, to))
         if (cancelled) return
         const rows = (data ?? []).sort((a, b) =>
           (a.students?.profiles?.full_name ?? '').localeCompare(b.students?.profiles?.full_name ?? '', 'ru'))
@@ -171,7 +173,10 @@ export function useMockExamWorks(examId: string | undefined) {
       if (scores.error) { setError(scores.error.message || 'Не удалось загрузить баллы'); setLoading(false); return }
       const n = template.max_points.length
       const byId = new Map<string, WorksStudent>()
+      const participantIds = e.mock_exam_rosters?.student_ids as string[] | undefined
+      const selected = participantIds ? new Set(participantIds) : null
       for (const g of gs.data ?? []) {
+        if (selected && !selected.has(g.student_id)) continue
         byId.set(g.student_id, {
           id: g.student_id, name: g.students?.profiles?.full_name || '—', profileId: g.students?.profile_id ?? null,
           points: Array(n).fill(null), auto: Array(n).fill(false), comments: Array(n).fill(null), sheet: null, photos: 0, photoList: [], result: null,

@@ -4,7 +4,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useEffectiveRole } from '@/store/staffModeStore'
 import { ownStudentRow } from '@/lib/ownStudent'
 
-export function useGroups() {
+export function useGroups(enabled = true) {
   const profile = useAuthStore(s => s.profile)
   // Роль ПРЕДСТАВЛЕНИЯ, а не из профиля: владелец в режиме учителя видит
   // только своё. Под админской RLS база отдаёт ему всю школу, поэтому
@@ -16,14 +16,14 @@ export function useGroups() {
   const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
-    if (!profile) return
+    if (!profile || !enabled) return
     setLoading(true)
 
     async function load() {
       try {
         const role = effectiveRole ?? profile!.role
 
-        const baseSelect = '*, courses(title,subject,exam_type,is_template), group_students(student_id,students(profiles(full_name))), teachers(profiles(full_name), is_active), curators(profiles(full_name), is_active)'
+        const baseSelect = '*, courses(title,subject,exam_type,is_template,is_active,is_draft), group_students(student_id,students(is_active,profiles(full_name))), teachers(profiles(full_name), is_active), curators(profiles(full_name), is_active)'
 
         if (role === 'student') {
           const { data: st } = await ownStudentRow(profile!.id)
@@ -62,7 +62,7 @@ export function useGroups() {
       }
     }
     load()
-  }, [profile, effectiveRole, tick])
+  }, [profile, effectiveRole, tick, enabled])
 
   return { groups, loading, reload }
 }

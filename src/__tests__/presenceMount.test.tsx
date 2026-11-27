@@ -48,7 +48,7 @@ function draw(path: string) {
   return render(<MemoryRouter initialEntries={[path]}><AppRoutes /></MemoryRouter>)
 }
 
-const touches = () => rpc.mock.calls.filter(c => c[0] === 'school_presence_touch')
+const touches = () => rpc.mock.calls.filter(c => c[0] === 'school_presence_touch' || c[0] === 'school_presence_touch_with_time')
 
 beforeEach(() => {
   rpc.mockReset()
@@ -103,6 +103,6 @@ describe('отметка присутствия на всём приложени
 
     await waitFor(() => expect(touches()).toHaveLength(1))
     // Иначе клиент мог бы назваться кем угодно, и список онлайн врал бы ролями.
-    expect(touches()[0]).toEqual(['school_presence_touch'])
+    expect(touches()[0]).toEqual(['school_presence_touch_with_time'])
   })
 })

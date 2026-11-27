@@ -42,6 +42,12 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+function groupFilterLabel(group: EnrollmentGroupOption): string {
+  return group.courseTitle && group.courseTitle !== group.name
+    ? `${group.name} · ${group.courseTitle}`
+    : group.name
+}
+
 export function StudentsPage() {
   const profile = useAuthStore(s => s.profile)
   const { groups } = useGroups()
@@ -90,6 +96,11 @@ export function StudentsPage() {
     })),
     [groups],
   )
+  const courseByGroupId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const group of groups) if (group.course_id) map.set(group.id, group.course_id)
+    return map
+  }, [groups])
 
   const wizardGroups = useMemo<WizardGroupOption[]>(
     () => enrollableGroups(groups).map(group => ({
@@ -424,7 +435,7 @@ export function StudentsPage() {
 
       {tab === 'students' && (
         <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="grid gap-3 md:grid-cols-2">
             <input
               value={studentQuery}
               onChange={event => setStudentQuery(event.target.value)}
@@ -432,12 +443,13 @@ export function StudentsPage() {
               className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
             <select
+              aria-label="Фильтр по группе"
               value={studentGroupFilter}
               onChange={event => setStudentGroupFilter(event.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="">Все группы</option>
-              {groupOptions.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+              {groupOptions.map(group => <option key={group.id} value={group.id}>{groupFilterLabel(group)}</option>)}
             </select>
           </div>
 
@@ -450,6 +462,7 @@ export function StudentsPage() {
           ) : (
             <StudentsTable
               students={filteredStudents}
+              courseByGroupId={courseByGroupId}
               telegramFlags={telegramFlags}
               lastSubmissions={lastSubmissions}
               onAssignGroup={setAssignGroupFor}
@@ -548,7 +561,7 @@ export function StudentsPage() {
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="">Все группы</option>
-              {groupOptions.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+              {groupOptions.map(group => <option key={group.id} value={group.id}>{groupFilterLabel(group)}</option>)}
             </select>
             <select
               value={inviteStatusFilter}

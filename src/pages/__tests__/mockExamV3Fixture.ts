@@ -63,13 +63,17 @@ export interface Db {
 /** Узкий поддельный клиент: select/eq/maybeSingle/then по таблице, rpc — в журнал. */
 export function fakeSupabase(db: () => Db) {
   const from = (table: string) => {
+    let range: [number, number] | null = null
     const c: Record<string, unknown> = {
       select: () => c, eq: () => c, order: () => c, in: () => c,
+      range: (start: number, end: number) => { range = [start, end]; return c },
       maybeSingle: () => Promise.resolve({
         data: table === 'mock_exams' ? db().exam : table === 'mock_exam_answer_keys' ? { answers: KEY } : null, error: null,
       }),
-      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-        Promise.resolve({ data: db().tables[table] ?? [], error: null }).then(res, rej),
+      then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => {
+        const rows = db().tables[table] ?? []
+        return Promise.resolve({ data: range ? rows.slice(range[0], range[1] + 1) : rows, error: null }).then(res, rej)
+      },
     }
     return c
   }

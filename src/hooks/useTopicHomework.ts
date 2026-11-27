@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { safeRpc } from '@/lib/safeRpc'
 import { removeIfOrphan } from '@/lib/storageRefs'
 import { uploadToStorage } from '@/lib/storageUpload'
 import { useAuthStore } from '@/store/authStore'
@@ -37,9 +38,13 @@ import {
  * живёт редактор ДЗ преподавателя, и ему в предпросмотре по прямой ссылке
  * терять попытки нельзя.
  */
-export function useTopicHomework(topicId: string | null, options: { preview?: boolean } = {}) {
+export function useTopicHomework(topicId: string | null, options: {
+  preview?: boolean; timedStudent?: boolean; workPlanRepeatItemId?: string | null
+} = {}) {
   const preview = !!options.preview
   const profile = useAuthStore(s => s.profile)
+  const timedStudent = !!options.timedStudent && !preview && profile?.role === 'student'
+  const repeatItemId = !preview && profile?.role === 'student' ? options.workPlanRepeatItemId : null
 
   const [homework, setHomework] = useState<TopicHomeworkRow | null>(null)
   const [files, setFiles] = useState<TopicHomeworkFileRow[]>([])
@@ -50,7 +55,11 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
-  const reload = useCallback(() => setTick(t => t + 1), [])
+  const readVersion = useRef(0)
+  const reload = useCallback(() => {
+    readVersion.current += 1
+    setTick(t => t + 1)
+  }, [])
 
   // ДЗ и его файлы дублируются в ref-ах: обработчик может создать ДЗ и тут же
   // грузить в него файлы, не дожидаясь ре-рендера (иначе гонка со state).
@@ -71,6 +80,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
   // нумерацию страниц, а не начать её заново. Держим в ref, чтобы не
   // пересоздавать колбэк на каждую пришедшую строку.
   const attemptFilesRef = useRef<TopicHomeworkAttemptFileRow[]>([])
+  const attemptFilesVersion = useRef(0)
   useEffect(() => { attemptFilesRef.current = attemptFiles }, [attemptFiles])
 
   useEffect(() => {
@@ -79,8 +89,42 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       return
     }
     let cancelled = false
-    setLoading(true)
+    const refreshingTimedWork = timedStudent && homeworkRef.current?.topic_id === topicId
+    setLoading(!refreshingTimedWork)
     setError(null)
+
+    async function loadTimedStudent() {
+      const version = readVersion.current
+      const filesVersion = attemptFilesVersion.current
+      const { data, error: readError } = await supabase
+        .from('topic_homework')
+        .select('*, topic_homework_files(*), topic_homework_attempts(*, topic_homework_attempt_files(*), topic_homework_reviews(*))')
+        .eq('topic_id', topicId!)
+        .maybeSingle()
+
+      if (cancelled || version !== readVersion.current) return
+      setLoading(false)
+      if (readError) { setError(readError.message); return }
+
+      const { topic_homework_files: taskFiles, topic_homework_attempts: dataAttempts, ...hw } = data ?? {
+        topic_homework_files: [],
+        topic_homework_attempts: [],
+      }
+      const rows = dataAttempts.map(({ topic_homework_attempt_files, topic_homework_reviews, ...attempt }) => ({
+        attempt,
+        files: topic_homework_attempt_files,
+        reviews: topic_homework_reviews,
+      }))
+      applyHomework(data ? hw as TopicHomeworkRow : null)
+      applyFiles(taskFiles.sort((a, b) => a.position - b.position) as TopicHomeworkFileRow[])
+      setAttempts(rows.map(row => row.attempt).sort((a, b) => a.attempt_number - b.attempt_number) as TopicHomeworkAttemptRow[])
+      setReviews(rows.flatMap(row => row.reviews).sort((a, b) => a.created_at.localeCompare(b.created_at)) as TopicHomeworkReviewRow[])
+      setStudentNames({})
+      // Первое фото может сохраниться уже после запуска запроса за черновиком.
+      if (!data || !refreshingTimedWork || filesVersion === attemptFilesVersion.current) {
+        setAttemptFiles(rows.flatMap(row => row.files).sort((a, b) => a.position - b.position) as TopicHomeworkAttemptFileRow[])
+      }
+    }
 
     async function load() {
       const { data: hwRow, error: hwErr } = await supabase
@@ -104,11 +148,29 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
         return
       }
 
+      let repeatAttemptIds: string[] | null = null
+      if (repeatItemId) {
+        const scope = await safeRpc('student_work_plan_repeat_homework_ids', {
+          p_item_id: repeatItemId, p_homework_id: hw.id,
+        })
+        if (cancelled) return
+        if (scope.error || !Array.isArray(scope.data)) {
+          setError(scope.error?.message ?? 'Повторение недоступно')
+          setAttempts([])
+          setAttemptFiles([])
+          setReviews([])
+          setLoading(false)
+          return
+        }
+        repeatAttemptIds = scope.data as string[]
+      }
       const [filesRes, attemptsRes] = await Promise.all([
         supabase.from('topic_homework_files').select('*').eq('homework_id', hw.id).order('position'),
-        preview
+        preview || repeatAttemptIds?.length === 0
           ? Promise.resolve({ data: [] as TopicHomeworkAttemptRow[] })
-          : supabase.from('topic_homework_attempts').select('*').eq('homework_id', hw.id).order('attempt_number'),
+          : repeatAttemptIds
+            ? supabase.from('topic_homework_attempts').select('*').eq('homework_id', hw.id).in('id', repeatAttemptIds).order('attempt_number')
+            : supabase.from('topic_homework_attempts').select('*').eq('homework_id', hw.id).order('attempt_number'),
       ])
       if (cancelled) return
 
@@ -135,7 +197,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       // Отдельным запросом, потому что RLS students/profiles живёт своими
       // правилами и join через PostgREST здесь только мешает.
       const studentIds = Array.from(new Set(rows.map(a => a.student_id)))
-      if (studentIds.length > 0) {
+      if (!repeatItemId && studentIds.length > 0) {
         const { data: studentRows } = await supabase
           .from('students')
           .select('id, profile_id, profiles!inner(full_name)')
@@ -154,9 +216,10 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       setLoading(false)
     }
 
-    load()
+    if (timedStudent) void loadTimedStudent()
+    else void load()
     return () => { cancelled = true }
-  }, [topicId, tick, preview, applyHomework, applyFiles])
+  }, [topicId, tick, preview, timedStudent, repeatItemId, applyHomework, applyFiles])
 
   // ── преподаватель ──────────────────────────────────────────
 
@@ -280,13 +343,21 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
   /** Создаёт попытку или возвращает уже открытую: RPC идемпотентна. */
   const startAttempt = useCallback(async (refresh = true): Promise<string> => {
     if (!homework) throw new Error('ДЗ не найдено')
+    if (repeatItemId) {
+      const result = await safeRpc('student_work_plan_repeat_homework_start', {
+        p_item_id: repeatItemId, p_homework_id: homework.id,
+      })
+      if (result.error || typeof result.data !== 'string') throw new Error(result.error?.message ?? 'Повторение недоступно')
+      if (refresh) reload()
+      return result.data
+    }
     const { data, error: err } = await supabase.rpc('topic_homework_start_attempt', {
       p_homework_id: homework.id,
     })
     if (err) throw err
     if (refresh) reload()
     return data as string
-  }, [homework, reload])
+  }, [homework, reload, repeatItemId])
 
   /**
    * Сдача работы: несколько файлов за раз, с процентами по каждому.
@@ -339,8 +410,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
         const upload = await compressImageFile(source, HOMEWORK_PHOTO_PRESET)
         const path = buildAttemptFilePath(attemptId, upload.name)
 
-        await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload, onProgress ? p => onProgress(i, p) : undefined)
-        onProgress?.(i, 100)
+        await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload, onProgress ? p => onProgress(i, Math.min(p, 99)) : undefined)
 
         const { data, error: err } = await supabase
           .from('topic_homework_attempt_files')
@@ -362,7 +432,9 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
         }
         const row = data as TopicHomeworkAttemptFileRow
         inserted.push(row)
-        setAttemptFiles(prev => [...prev, row])
+        attemptFilesVersion.current += 1
+        setAttemptFiles(prev => prev.some(file => file.id === row.id) ? prev : [...prev, row])
+        onProgress?.(i, 100)
       }
 
       return inserted
@@ -405,6 +477,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
     if (reordered.length !== mine.length) throw new Error('Порядок страниц устарел — обновите страницу')
 
     const withPositions = reordered.map((f, i) => ({ ...f, position: i }))
+    attemptFilesVersion.current += 1
     setAttemptFiles(prev => [
       ...prev.filter(f => f.attempt_id !== attemptId),
       ...withPositions,
@@ -419,6 +492,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
         if (err) throw err
       }
     } catch (e) {
+      attemptFilesVersion.current += 1
       setAttemptFiles(snapshot)
       throw e instanceof Error ? e : new Error('Не удалось сохранить порядок страниц')
     }
@@ -428,6 +502,7 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
     const { error: err } = await supabase.from('topic_homework_attempt_files').delete().eq('id', fileId)
     if (err) throw err
     await supabase.storage.from(TOPIC_HOMEWORK_ATTEMPTS_BUCKET).remove([storagePath])
+    attemptFilesVersion.current += 1
     setAttemptFiles(prev => prev.filter(f => f.id !== fileId))
   }, [])
 
@@ -461,8 +536,13 @@ export function useTopicHomework(topicId: string | null, options: { preview?: bo
       ? await supabase.rpc('topic_homework_submit_incomplete_photos', args)
       : await supabase.rpc('topic_homework_submit_attempt', args)
     if (err) throw err
+    if (timedStudent) {
+      setAttempts(rows => rows.map(row => (
+        row.id === attemptId && row.status === 'draft' ? { ...row, status: 'submitted' } : row
+      )))
+    }
     reload()
-  }, [reload])
+  }, [reload, timedStudent])
 
   /**
    * Оповещение в Telegram. Без аргумента — всем привязанным, как раньше;

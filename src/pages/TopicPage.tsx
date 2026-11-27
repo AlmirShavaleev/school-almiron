@@ -40,6 +40,7 @@ import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { MockExamAlert } from '@/components/student/MockExamAlert'
 import { TopicAutocheckStudent } from '@/components/courseProgram/TopicAutocheckStudent'
 import { useTopicAutocheck } from '@/hooks/useTopicAutocheck'
+import { isWorkPlanItemId } from '@/lib/studentWorkPlan'
 import { hasAutocheckHomework, normalizeLessonFormat, type LessonFormat } from '@/lib/autocheck'
 import type { TopicHomeworkRow } from '@/lib/topicHomework'
 import { TopicRatingBlock } from '@/components/courseProgram/TopicRatingBlock'
@@ -285,7 +286,13 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // В предпросмотре эталоны персонала сбрасываются «как у нового ученика».
   const autocheckHomework = !!topic && topic.id === topicId && !isTimedKind(topic.kind)
     && hasAutocheckHomework(topic.lesson_format, topic.hw_autocheck)
-  const autocheck = useTopicAutocheck(topicId ?? null, { preview, enabled: autocheckHomework })
+  const planItem = searchParams.get('planItem')
+  const repeatItemId = !preview && isWorkPlanItemId(planItem) ? planItem : null
+  const repeatTasks = searchParams.get('repeat') === 'tasks' ? repeatItemId : null
+  const repeatHomework = searchParams.get('repeat') === 'homework' ? repeatItemId : null
+  const autocheck = useTopicAutocheck(topicId ?? null, {
+    preview, enabled: autocheckHomework, ...(repeatTasks ? { repeatItemId: repeatTasks } : {}),
+  })
 
   // §288. Курс «по прохождению»: замок урока — решение базы; после того как все
   // задачи автопроверки завершены, замки перечитываются — мог открыться следующий.
@@ -293,7 +300,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   const progressLock = progressLocks.data?.mode === 'progress'
     ? progressLocks.data.topics.find(l => l.topic_id === topicId) ?? null
     : null
-  const autocheckFinished = !!autocheck.state?.finished
+  const autocheckFinished = !repeatTasks && !!autocheck.state?.finished
   const refreshLocks = progressLocks.refresh
   useEffect(() => {
     if (autocheckFinished) refreshLocks()
@@ -676,12 +683,12 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           // материалы (условие, решение, критерии): перечитываем вкладки.
           onPhaseChange={() => { reloadMaterials?.() }}
         />
-      ) : key === 'homework' && autocheckHomework && !hasPhotoSubmission ? (
+      ) : key === 'homework' && autocheckHomework && (!hasPhotoSubmission || !!repeatTasks) ? (
         autocheck.state ? (
           <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
         ) : (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-400">
-            {autocheck.loading ? <><Loader2 size={16} className="animate-spin" />Загрузка задач…</> : 'Задачи сейчас недоступны'}
+            {autocheck.loading ? <><Loader2 size={16} className="animate-spin" />Загрузка задач…</> : autocheck.error ?? 'Задачи сейчас недоступны'}
           </div>
         )
       ) : key === 'homework' ? (
@@ -690,10 +697,11 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
             <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
           )}
           <TopicHomeworkStudent
-            key={topic.id}
+            key={topic.id + (repeatHomework ?? '')}
             topicId={topic.id}
+            workPlanRepeatItemId={repeatHomework}
             worksheetMaterials={inlinePhotoWorksheet ? studentMaterials.filter(material => material.section === 'worksheet_homework') : undefined}
-            onSubmitted={homeworkState.markSubmitted}
+            onSubmitted={repeatHomework ? undefined : homeworkState.markSubmitted}
             // §239. После «Принято» разбор ведёт к вкладке «Решение ДЗ».
             solution={{ unlocked: solutionState.unlocked, hasSolution: solutionState.hasSolution }}
             onOpenSolution={() => {

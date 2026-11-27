@@ -6,8 +6,9 @@ import { MockExamForm } from '@/components/mockExams/MockExamForm'
 import { ExamStepper, LiveHead, WorksTable } from '@/components/mockExams/MockExamWorks'
 import { MockExamAiBar } from '@/components/mockExams/MockExamAiBar'
 import { MockExamAiTab } from '@/components/mockExams/MockExamAiTab'
+import { MockExamExcelButton } from '@/components/mockExams/MockExamExcelButton'
 import { MockExamGridPage } from '@/pages/MockExamGridPage'
-import { useMockExamWorks, type LegacyMockExamResult } from '@/hooks/useMockExamWorks'
+import { useMockExamWorks, type LegacyMockExamResult, type WorksExam } from '@/hooks/useMockExamWorks'
 import { useMockExamAi } from '@/hooks/useMockExamAi'
 import { useMockExamLive } from '@/hooks/useMockExamLive'
 import { useMockExamAway } from '@/hooks/useMockExamAway'
@@ -163,7 +164,7 @@ export function MockExamPage() {
             )
           )}
           {tab === 'table' && (
-            legacyResults ? <LegacyResults rows={legacyResults.rows} error={legacyResults.error} maxScore={exam.maxScore} />
+            legacyResults ? <LegacyResults rows={legacyResults.rows} error={legacyResults.error} exam={exam} exportDisabled={exam.id !== id} />
               : <div className="pt-4"><MockExamGridPage embedded onChanged={reload} /></div>
           )}
           {tab === 'setup' && <div className="py-4"><MockExamForm mode={{ kind: 'edit', examId: exam.id, onSaved: reload }} /></div>}
@@ -177,13 +178,35 @@ export function MockExamPage() {
   )
 }
 
-function LegacyResults({ rows, error, maxScore }: { rows: LegacyMockExamResult[]; error: string | null; maxScore: number }) {
+function LegacyResults({ rows, error, exam, exportDisabled }: {
+  rows: LegacyMockExamResult[]
+  error: string | null
+  exam: WorksExam
+  exportDisabled: boolean
+}) {
   if (error) return <p role="alert" className="py-4 text-sm text-verdict-bad-ink">Не удалось загрузить результаты.</p>
   if (!rows.length) return <p className="py-4 text-sm text-graphite-600">Сохранённых результатов пока нет.</p>
 
   return (
-    <div className="overflow-x-auto pb-2 pt-3">
-      <table className="w-full text-left text-sm">
+    <div className="space-y-2 pb-2 pt-3">
+      <div className="flex justify-end">
+        <MockExamExcelButton exam={exam} disabled={exportDisabled} getTable={() => ({
+          columns: [
+            { label: 'Ученик', width: 34 },
+            { label: 'Балл', width: 12 },
+            { label: 'Макс. балл', width: 14 },
+            { label: 'Часть 1', width: 12 },
+            { label: 'Часть 2', width: 12 },
+            { label: 'Заметка', width: 45 },
+          ],
+          rows: rows.map(result => [
+            result.students?.profiles?.full_name || '—',
+            result.score, exam.maxScore, result.part1_score, result.part2_score, result.notes,
+          ]),
+        })} />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
         <caption className="sr-only">Сохранённые результаты пробника</caption>
         <thead className="border-b border-graphite-200 text-graphite-600">
           <tr>
@@ -199,14 +222,15 @@ function LegacyResults({ rows, error, maxScore }: { rows: LegacyMockExamResult[]
                 {result.notes && <p className="mt-1 whitespace-pre-wrap break-words font-normal text-graphite-600">{result.notes}</p>}
               </th>
               <td className="whitespace-nowrap px-2.5 py-3 text-right align-top">
-                <div className="font-semibold tabular-nums text-graphite-900">{result.score} / {maxScore}</div>
+                <div className="font-semibold tabular-nums text-graphite-900">{result.score} / {exam.maxScore}</div>
                 {result.part1_score != null && <div className="text-xs text-graphite-600">Часть 1 · {result.part1_score}</div>}
                 {result.part2_score != null && <div className="text-xs text-graphite-600">Часть 2 · {result.part2_score}</div>}
               </td>
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   )
 }

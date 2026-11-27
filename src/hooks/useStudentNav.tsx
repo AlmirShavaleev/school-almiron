@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpen, ClipboardCheck, House, CreditCard, LibraryBig, LogOut, Settings, ShoppingBag, Star, Timer } from 'lucide-react'
+import { BookOpen, ClipboardCheck, House, CreditCard, LibraryBig, ListChecks, LogOut, Settings, ShoppingBag, Star, Timer } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useHomeworkToDoCount } from '@/hooks/useMyTopicHomework'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
@@ -34,6 +34,7 @@ export function useStudentNav() {
   ]
 
   const more: MoreItem[] = useMemo(() => [
+    { key: 'work-plan', label: 'Мой план работы', icon: <ListChecks size={18} aria-hidden />, to: '/my-work-plan' },
     ...(subs.enabled ? [
       { key: 'storefront', label: 'Витрина курсов', icon: <ShoppingBag size={18} aria-hidden />, to: '/courses' },
       { key: 'subscription', label: 'Оплата', icon: <CreditCard size={18} aria-hidden />, to: '/my-subscription', tag: subscriptionTag(mine ?? []) },

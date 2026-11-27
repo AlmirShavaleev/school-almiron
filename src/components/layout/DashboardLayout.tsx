@@ -75,6 +75,8 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/variants\/exam\/[^/]+\/[^/]+\/auto/, 'Автосборка теста'],
   [/^\/variants/, 'Тесты'],
   [/^\/my-course/, 'Мой курс'],
+  [/^\/my-work-plan(?:\/|$)/, 'Мой план работы'],
+  [/^\/student-work-plans(?:\/|$)/, 'Планы учеников'],
   [/^\/my-mock-exams$/, 'Пробники'],
   [/^\/my-homeworks$/, 'Домашние задания'],
   [/^\/my-homework/, 'Домашние задания'],
@@ -159,8 +161,7 @@ export function DashboardLayout() {
         ? <StudentNav />
         : <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
 
-      {/* Main content: no left margin on mobile, 256px on md+ (у ученика — 96px) */}
-      <div className={skin ? 'stu-main flex-1 min-w-0 md:ml-24 flex flex-col min-h-screen' : 'flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen'}>
+      <div className={skin ? 'stu-main flex-1 min-w-0 flex flex-col min-h-screen' : 'flex-1 min-w-0 md:ml-64 flex flex-col min-h-screen'}>
         <ImpersonationBanner />
         {/* Top bar */}
         <header className={skin

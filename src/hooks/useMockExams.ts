@@ -8,7 +8,7 @@ import { hasWorkOf, windowOf, type ExamListProgress, type WorkInput } from '@/li
 import type { Tables } from '@/types/database'
 
 const EXAM_COLUMNS = 'id, title, date, subject, exam_type, group_id, max_score'
-const LIST_TAIL = 'starts_at, duration_minutes, photo_grace_minutes, mock_exam_templates(max_points), mock_exam_sheets(student_id, submitted_at, answers), mock_exam_photos(student_id), mock_exam_task_scores(student_id, task_number), mock_exam_results(student_id)'
+const LIST_TAIL = 'starts_at, duration_minutes, photo_grace_minutes, mock_exam_templates(max_points), mock_exam_sheets(student_id, submitted_at, answers), mock_exam_photos(student_id), mock_exam_task_scores(student_id, task_number), mock_exam_results(student_id), mock_exam_rosters(student_ids)'
 /**
  * §218. Только для выгрузки в Excel: имя ученика, итог и баллы по номерам.
  */
@@ -33,6 +33,7 @@ type StaffExamRow = Omit<MockExamListItem, 'groups' | 'progress'> & Parameters<t
   mock_exam_photos: { student_id: string }[]
   mock_exam_task_scores: { student_id: string; task_number: number }[]
   mock_exam_results: { student_id: string }[]
+  mock_exam_rosters: { student_ids: string[] } | null
 }
 
 export type MockExamExportItem = MockExamListItem & {
@@ -96,7 +97,8 @@ function listItem(row: StaffExamRow): MockExamListItem {
     marked.set(task.student_id, (marked.get(task.student_id) ?? 0) + 1)
   }
 
-  const participants = [...studentsWithWork].filter(studentId => roster.has(studentId))
+  const selected = row.mock_exam_rosters ? new Set(row.mock_exam_rosters.student_ids) : null
+  const participants = [...studentsWithWork].filter(studentId => roster.has(studentId) && (!selected || selected.has(studentId)))
   const hasWork = participants.length > 0
   const allChecked = hasWork && participants.every(studentId => marked.get(studentId) === taskCount)
   return { ...item, progress: { window, hasWork, allChecked } }

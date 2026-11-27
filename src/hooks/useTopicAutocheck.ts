@@ -30,8 +30,11 @@ export interface CheckResult {
  * Ошибка чтения (нет миграции, нет прав) не роняет страницу: `state = null`,
  * блока просто нет.
  */
-export function useTopicAutocheck(topicId: string | null | undefined, opts: { preview?: boolean; enabled?: boolean } = {}) {
+export function useTopicAutocheck(topicId: string | null | undefined, opts: {
+  preview?: boolean; enabled?: boolean; repeatItemId?: string | null
+} = {}) {
   const { preview = false, enabled = true } = opts
+  const repeatItemId = preview ? null : opts.repeatItemId
   const [state, setState] = useState<AutocheckState | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,7 +45,10 @@ export function useTopicAutocheck(topicId: string | null | undefined, opts: { pr
     let cancelled = false
     setLoading(true)
     setError(null)
-    db.rpc('topic_autocheck_state', { p_topic_id: topicId }).then(
+    db.rpc(repeatItemId ? 'student_work_plan_repeat_tasks' : 'topic_autocheck_state', {
+      p_topic_id: topicId,
+      ...(repeatItemId ? { p_item_id: repeatItemId } : {}),
+    }).then(
       ({ data, error: e }: { data: unknown; error: { message: string } | null }) => {
         if (cancelled) return
         if (e) { setError(e.message); setState(null) }
@@ -60,14 +66,17 @@ export function useTopicAutocheck(topicId: string | null | undefined, opts: { pr
       },
     )
     return () => { cancelled = true }
-  }, [topicId, enabled, preview, reloadKey])
+  }, [topicId, enabled, preview, reloadKey, repeatItemId])
 
   const reload = useCallback(() => setReloadKey(k => k + 1), [])
 
   /** Отправить ответ. Новое состояние урока сервер возвращает тем же вызовом. */
   const check = useCallback(async (taskId: string, answer: string): Promise<CheckResult> => {
     if (preview) return { ok: false, error: 'В предпросмотре ответы не проверяются' }
-    const { data, error: e } = await db.rpc('topic_autocheck_check', { p_task_id: taskId, p_answer: answer })
+    const { data, error: e } = await db.rpc(repeatItemId ? 'student_work_plan_repeat_check' : 'topic_autocheck_check', {
+      p_task_id: taskId, p_answer: answer,
+      ...(repeatItemId ? { p_item_id: repeatItemId } : {}),
+    })
     if (e) {
       // Закрытую задачу (вторая вкладка, двойной клик) показываем как есть.
       if (String(e.message ?? '').includes('AUTOCHECK_CLOSED')) reload()
@@ -76,7 +85,7 @@ export function useTopicAutocheck(topicId: string | null | undefined, opts: { pr
     const next = parseAutocheckState((data as Record<string, unknown> | null)?.state)
     if (next) setState(next)
     return { ok: true, correct: (data as Record<string, unknown> | null)?.correct === true }
-  }, [preview, reload])
+  }, [preview, reload, repeatItemId])
 
   return { state, loading, error, reload, check }
 }

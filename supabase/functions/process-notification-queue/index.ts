@@ -20,6 +20,7 @@ import {
   buildStudentReminderTelegramMessage,
   isQuietMsk,
   isReminderStale,
+  outOfQuiet,
   studentReminderAllowedByPrefs,
 } from '../_shared/student-reminders.ts'
 
@@ -406,6 +407,12 @@ function buildMessage(item: QueueItem, appUrl: string) {
     case 'student_reminder':
       return buildStudentReminderTelegramMessage(p, appUrl)
 
+    case 'student_work_plan':
+      return {
+        text: `<b>${esc(p.title ?? 'План работы')}</b>\n${esc(p.message ?? '')}`,
+        replyMarkup: button(p.link, 'Открыть план'),
+      }
+
     default:
       return {
         text: `📬 Новое уведомление: ${esc(p.title ?? item.event_type)}`,
@@ -477,8 +484,10 @@ Deno.serve(async (req: Request) => {
       // Проверяем настройки уведомлений
       // §264: у напоминаний ученика — свои выключатели по видам (remind_*).
       const isReminder = item.event_type === STUDENT_REMINDER_EVENT
+      const isWorkPlan = item.event_type === 'student_work_plan'
       const prefCols = 'telegram, homework, lesson, checked, lesson_changed, telegram_variant_assignments, overdue' +
-        (isReminder ? ', ' + REMINDER_KINDS.map(k => k.prefColumn).join(', ') : '')
+        (isReminder ? ', ' + REMINDER_KINDS.map(k => k.prefColumn).join(', ') : '') +
+        (isWorkPlan ? ', remind_hw_due_tomorrow' : '')
       const { data: prefs } = await supabase
         .from('notification_prefs')
         .select(prefCols)
@@ -489,7 +498,11 @@ Deno.serve(async (req: Request) => {
       // взяла его в тишину (22:00–08:00 МСК) или слишком поздно (проверочная
       // уже началась, окно уже закрылось).
       const now = new Date()
-      const prefEnabled = isTelegramPreferenceEnabled(item.event_type, prefs) &&
+      const planKind = item.payload?.kind
+      const channelEnabled = isTelegramPreferenceEnabled(item.event_type, isWorkPlan && !prefs ? { telegram: true } : prefs)
+      const prefEnabled = channelEnabled &&
+        (!isWorkPlan || ['published', 'updated', 'deadline', 'completed'].includes(planKind) &&
+          (planKind !== 'deadline' || prefs?.remind_hw_due_tomorrow !== false)) &&
         (!isReminder || (
           studentReminderAllowedByPrefs(item.payload?.kind, prefs as Record<string, unknown> | null) &&
           !isQuietMsk(now) &&
@@ -502,6 +515,12 @@ Deno.serve(async (req: Request) => {
           .update({ status: 'cancelled' })
           .eq('id', item.id)
         results.skipped++
+        continue
+      }
+      if (isWorkPlan && isQuietMsk(now)) {
+        await supabase.from('notification_queue').update({
+          status: 'pending', processing_at: null, scheduled_for: outOfQuiet(now).toISOString(),
+        }).eq('id', item.id)
         continue
       }
 

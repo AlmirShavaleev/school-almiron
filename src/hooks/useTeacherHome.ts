@@ -4,10 +4,8 @@ import { teacherHomeData, teacherHomePeriod, type TeacherGroupRow, type TeacherH
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
 
 const GROUP_SELECT = `
-  id, name, course_id, courses!inner(title),
-  group_students(student_id, joined_at, students(is_active)),
-  result_exams:mock_exams(mock_exam_results!inner(student_id)),
-  upcoming_exams:mock_exams(id, title, starts_at)
+  name, courses!inner(id),
+  upcoming_exams:mock_exams!inner(id, title, starts_at)
 `
 
 export function useTeacherHome() {
@@ -24,9 +22,9 @@ export function useTeacherHome() {
     let cancelled = false
 
     async function load() {
-      const { today, from, now, nextWeek } = teacherHomePeriod(new Date())
+      const { today, now, nextWeek } = teacherHomePeriod(new Date())
       if (courseIds?.length === 0) {
-        setState({ key, home: teacherHomeData([], from, now), today, error: null })
+        setState({ key, home: teacherHomeData([]), today, error: null })
         return
       }
 
@@ -35,8 +33,6 @@ export function useTeacherHome() {
           .eq('is_active', true)
           .not('courses.is_active', 'is', false)
           .not('courses.is_template', 'is', true)
-          .gte('result_exams.mock_exam_results.notified_at', from)
-          .lte('result_exams.mock_exam_results.notified_at', now)
           .gte('upcoming_exams.starts_at', now)
           .lt('upcoming_exams.starts_at', nextWeek)
           .order('name')
@@ -44,9 +40,9 @@ export function useTeacherHome() {
         // Сгенерированные типы mock_exams ещё не включают starts_at.
         const { data, error } = await query.overrideTypes<TeacherGroupRow[], { merge: false }>()
         if (error) throw error
-        if (!cancelled) setState({ key, home: teacherHomeData(data ?? [], from, now), today, error: null })
+        if (!cancelled) setState({ key, home: teacherHomeData(data ?? []), today, error: null })
       } catch {
-        if (!cancelled) setState({ key, home: null, today, error: 'Не удалось загрузить сводку.' })
+        if (!cancelled) setState({ key, home: null, today, error: 'Не удалось загрузить ближайшие пробники.' })
       }
     }
 
@@ -57,5 +53,13 @@ export function useTeacherHome() {
   }, [key, scope.loading])
 
   const current = !scope.loading && state?.key === key ? state : null
-  return { home: current?.home ?? null, today: current?.today ?? '', loading: !current, error: current?.error ?? null, reload, courseIds }
+  return {
+    home: current?.home ?? null,
+    today: current?.today ?? '',
+    loading: !current,
+    error: current?.error ?? null,
+    reload,
+    courseIds,
+    scopeLoading: scope.loading,
+  }
 }

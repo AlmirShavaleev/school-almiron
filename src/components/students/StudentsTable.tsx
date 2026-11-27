@@ -18,13 +18,14 @@ import { formatRelativeDay, type LastSubmissions, type TelegramFlags } from '@/l
 
 interface StudentsTableProps {
   students:        MyStudent[]
+  courseByGroupId: ReadonlyMap<string, string>
   telegramFlags:   TelegramFlags
   lastSubmissions: LastSubmissions
   /** Открыть зачисление в группу для конкретного ученика. */
   onAssignGroup:   (student: MyStudent) => void
 }
 
-export function StudentsTable({ students, telegramFlags, lastSubmissions, onAssignGroup }: StudentsTableProps) {
+export function StudentsTable({ students, courseByGroupId, telegramFlags, lastSubmissions, onAssignGroup }: StudentsTableProps) {
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full min-w-[720px] text-sm">
@@ -32,7 +33,7 @@ export function StudentsTable({ students, telegramFlags, lastSubmissions, onAssi
           <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
             <th className="px-4 py-3 font-medium">Ученик</th>
             <th className="px-3 py-3 font-medium">Класс</th>
-            <th className="px-3 py-3 font-medium">Группа · Курс</th>
+            <th className="px-3 py-3 font-medium">Курсы и группы</th>
             <th className="px-3 py-3 font-medium">Последняя сдача</th>
             <th className="px-3 py-3 font-medium text-center">TG</th>
             <th className="px-4 py-3 font-medium">Добавлен</th>
@@ -43,6 +44,7 @@ export function StudentsTable({ students, telegramFlags, lastSubmissions, onAssi
             <StudentRow
               key={student.studentId ?? student.profileId ?? student.fullName}
               student={student}
+              courseByGroupId={courseByGroupId}
               telegram={student.studentId ? telegramFlags[student.studentId] : undefined}
               lastSubmission={student.studentId ? lastSubmissions[student.studentId] : undefined}
               onAssignGroup={onAssignGroup}
@@ -55,16 +57,23 @@ export function StudentsTable({ students, telegramFlags, lastSubmissions, onAssi
 }
 
 function StudentRow({
-  student, telegram, lastSubmission, onAssignGroup,
+  student, courseByGroupId, telegram, lastSubmission, onAssignGroup,
 }: {
   student:        MyStudent
+  courseByGroupId: ReadonlyMap<string, string>
   telegram:       boolean | undefined
   lastSubmission: string | undefined
   onAssignGroup:  (student: MyStudent) => void
 }) {
-  const groupNames  = student.groups.map(group => group.name).filter(Boolean)
-  const courseNames = student.courses.map(course => course.title).filter(Boolean)
-  const hasPlace    = groupNames.length > 0 || courseNames.length > 0
+  const hasPlace = student.groups.length > 0 || student.courses.length > 0
+  const groupNamesByCourse = new Map(student.courses.map(course => [course.id, [] as string[]]))
+  const unpairedGroups: MyStudent['groups'] = []
+  for (const group of student.groups) {
+    const courseId = courseByGroupId.get(group.id)
+    const names = courseId ? groupNamesByCourse.get(courseId) : undefined
+    if (names) names.push(group.name)
+    else unpairedGroups.push(group)
+  }
 
   return (
     <tr className="hover:bg-slate-50/70 transition-colors">
@@ -87,12 +96,24 @@ function StudentRow({
 
       <td className="px-3 py-3">
         {hasPlace ? (
-          <div className="min-w-0">
-            <div className="truncate text-graphite-900">{groupNames.join(', ') || '—'}</div>
-            {courseNames.length > 0 && (
-              <div className="truncate text-xs text-slate-400">{courseNames.join(', ')}</div>
-            )}
-          </div>
+          <ul aria-label="Зачисления" className="min-w-0 space-y-2">
+            {student.courses.map(course => {
+              const names = groupNamesByCourse.get(course.id) ?? []
+              return (
+                <li key={course.id}>
+                  <div className="break-words font-medium text-graphite-900">{course.title}</div>
+                  {names.length > 0 && (
+                    <div className="break-words text-xs text-graphite-600">
+                      {names.length === 1 ? 'Группа' : 'Группы'} {names.map(name => `«${name}»`).join(', ')}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+            {unpairedGroups.map(group => (
+              <li key={group.id} className="break-words text-xs text-graphite-600">Группа «{group.name}»</li>
+            ))}
+          </ul>
         ) : (
           <button
             type="button"

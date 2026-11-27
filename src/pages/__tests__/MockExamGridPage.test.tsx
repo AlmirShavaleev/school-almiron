@@ -18,6 +18,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import type { MockExamTableExport } from '@/utils/exportExcel'
+
+const { exportTable } = vi.hoisted(() => ({ exportTable: vi.fn() }))
+vi.mock('@/utils/exportExcel', () => ({ exportMockExamTable: exportTable }))
 
 // Шаблон на четыре задания: №1–2 первая часть по 1 баллу, №3 — 2, №4 — 3.
 const TEMPLATE = { id: 't1', title: 'Мини', subject: 'math', exam_type: 'ege', year: 2027, max_points: [1, 1, 2, 3], part1_last: 2, score_scale: null as number[] | null }
@@ -45,6 +49,8 @@ function thenable<T>(value: T) {
   const chain: Record<string, unknown> = {
     select: () => chain,
     eq: () => chain,
+    order: () => chain,
+    range: () => chain,
     maybeSingle: () => Promise.resolve(value),
     then: (res: (v: T) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(value).then(res, rej),
   }
@@ -129,6 +135,7 @@ const save = () => fireEvent.click(screen.getByTestId('mock-grid-save'))
 
 beforeEach(() => {
   cleanup()
+  exportTable.mockClear()
   exam = { id: 'e1', title: 'Пробник №3', date: '2026-10-18', subject: 'math', exam_type: 'ege', group_id: 'g1', template_id: 't1', groups: { name: '11А' }, mock_exam_templates: { ...TEMPLATE } }
   // Половина группы уже внесена: Белов 1+0+2+1 = 4.
   stored = [
@@ -146,6 +153,22 @@ beforeEach(() => {
 async function ready() { await screen.findByLabelText('Белов Артём, задание 1') }
 
 describe('MockExamGridPage — подхват и итоги', () => {
+  it('выгружает весь состав, текущие баллы, нули, пропуски и итоги без записи в базу', async () => {
+    open(); await ready()
+    fireEvent.change(cell('Сафин Амир', 4), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Скачать Excel' }))
+    await waitFor(() => expect(exportTable).toHaveBeenCalledOnce())
+
+    const [, table] = exportTable.mock.calls[0] as [unknown, MockExamTableExport]
+    expect(table.rows.map(row => row[0])).toEqual(ROSTER.map(row => row.name))
+    expect(table.rows[0]).toEqual(['Белов Артём', 1, 0, 2, 1, 1, 3, 4, 4, 'Не отправлен'])
+    expect(table.rows[3]).toEqual(['Сафин Амир', null, null, null, 2, 0, 2, 2, 2, 'Нет сохранённого итога'])
+    expect(table.footer?.map(row => row[0])).toEqual(['Максимум', 'Набрано по номеру, %', 'Средний балл'])
+    expect(table.footer?.[0]).toEqual(['Максимум', 1, 1, 2, 3, 2, 5, 7])
+    expect(rpcCalls).toHaveLength(0)
+    expect(notifyCalls).toHaveLength(0)
+  })
+
   it('подхватывает сохранённое, пустая клетка — пустая, а не ноль', async () => {
     open(); await ready()
     expect(rowValues('Белов Артём')).toEqual(['1', '0', '2', '1'])

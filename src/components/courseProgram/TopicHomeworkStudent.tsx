@@ -93,10 +93,11 @@ function worksheetNumber(title: string | null): string | undefined {
  * «Сдать заново» после принятия — это UX, а запрет держит триггер в БД.
  */
 export function TopicHomeworkStudent({
-  topicId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [],
+  topicId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [], workPlanRepeatItemId,
 }: {
   topicId: string
   className?: string
+  workPlanRepeatItemId?: string | null
   worksheetMaterials?: readonly TopicMaterial[]
   /**
    * §239. Состояние «Решения ДЗ» темы (`useTopicSolutionState` страницы темы):
@@ -113,7 +114,7 @@ export function TopicHomeworkStudent({
   const {
     homework, files, attempts, attemptFiles, reviews, loading, error,
     startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt, reload,
-  } = useTopicHomework(topicId, { preview })
+  } = useTopicHomework(topicId, { preview, ...(workPlanRepeatItemId ? { workPlanRepeatItemId } : {}) })
 
   const coarse = useCoarsePointer()
   const [busy, setBusy] = useState(false)
@@ -1040,10 +1041,11 @@ export function TopicHomeworkStudent({
  * страницы, а плитки маленькие и попасть мимо легко.
  */
 export function PageGrid({
-  files, disabled, coarse, onReorder, onDelete,
+  files, disabled, deferPreviews = false, coarse, onReorder, onDelete,
 }: {
   files: TopicHomeworkAttemptFileRow[]
   disabled: boolean
+  deferPreviews?: boolean
   /** Указатель неточный (палец) — ручка перетаскивания скрыта, порядок только стрелками. */
   coarse: boolean
   onReorder: (orderedIds: string[]) => void
@@ -1118,6 +1120,7 @@ export function PageGrid({
           total={shown.length}
           dragging={!!drag && shown[drag.over]?.id === f.id}
           disabled={disabled}
+          deferPreview={deferPreviews}
           coarse={coarse}
           onDelete={() => onDelete(f)}
           onMove={delta => move(idx, delta)}
@@ -1151,6 +1154,7 @@ function PageThumb({
   onPointerMove,
   onPointerUp,
   disabled,
+  deferPreview,
   coarse,
 }: {
   file: TopicHomeworkAttemptFileRow
@@ -1165,19 +1169,20 @@ function PageThumb({
   onPointerMove: (e: React.PointerEvent) => void
   onPointerUp: (e: React.PointerEvent) => void
   disabled: boolean
+  deferPreview: boolean
   coarse: boolean
 }) {
   const isImage = !!file.mime_type?.startsWith('image/')
   const [signedUrl, setSignedUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isImage) return
+    if (!isImage || deferPreview) return
     let cancelled = false
     getSignedFileUrl(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, file.storage_path)
       .then(url => { if (!cancelled) setSignedUrl(url) })
       .catch(() => { /* останется иконка — миниатюра не стоит ошибки */ })
     return () => { cancelled = true }
-  }, [isImage, file.storage_path])
+  }, [isImage, deferPreview, file.storage_path])
 
   return (
     <div

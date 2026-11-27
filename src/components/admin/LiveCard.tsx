@@ -1,6 +1,6 @@
 import { useReducedMotion } from 'framer-motion'
 import '@/components/charts/schoolCharts.css'
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Minus } from 'lucide-react'
+import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronDown, Minus } from 'lucide-react'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 import { cn } from '@/utils/cn'
 import {
@@ -39,6 +39,7 @@ export interface LiveCardProps {
   tone: CardTone
   /** Строка под числом: «12 сейчас на платформе», «сегодня: 3». */
   statusText: string
+  statusDisclosure?: { onToggle: () => void; expanded: boolean; controls?: string }
   /** Точка у строки состояния — только там, где состояние действительно живое. */
   live?: boolean
   color: string
@@ -50,7 +51,7 @@ export interface LiveCardProps {
 
 export function LiveCard(props: LiveCardProps) {
   const {
-    title, points, kind, tone, statusText, live, color,
+    title, points, kind, tone, statusText, statusDisclosure, live, color,
     onOpen, openLabel, animate, testId,
   } = props
 
@@ -119,7 +120,20 @@ export function LiveCard(props: LiveCardProps) {
             data-testid={`${testId}-dot`}
           />
         )}
-        <span className="truncate">{statusText}</span>
+        {statusDisclosure ? (
+          <button
+            type="button"
+            aria-expanded={statusDisclosure.expanded}
+            aria-controls={statusDisclosure.controls}
+            onClick={statusDisclosure.onToggle}
+            className="inline-flex items-center gap-1 rounded-sm font-semibold text-primary-700 underline underline-offset-2 hover:text-primary-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-600"
+          >
+            {statusText}
+            <ChevronDown size={12} aria-hidden className={cn(statusDisclosure.expanded && 'rotate-180')} />
+          </button>
+        ) : (
+          <span className="truncate">{statusText}</span>
+        )}
       </div>
 
       <div className="mt-5">

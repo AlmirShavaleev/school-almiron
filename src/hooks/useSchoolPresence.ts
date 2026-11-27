@@ -15,8 +15,7 @@ const ACTIVITY_EVENTS = ['pointerdown', 'keydown'] as const
  *
  * Вызывается ОДИН раз на приложение — компонентом `SchoolPresencePublisher`,
  * смонтированным на всё защищённое поддерево. Отметиться должны все вошедшие:
- * читает список только админ, но если ученик не отметится, показывать будет
- * нечего.
+ * по этим отметкам админ видит школу, а преподаватель — своих учеников.
  *
  * РАНЬШЕ отметки шли только при видимой вкладке, и это было неверно: файлы,
  * ссылки и часть видео открываются в новой вкладке, так что ученик, читающий
@@ -36,6 +35,7 @@ export const TOUCH_MIN_GAP_MS = PRESENCE_TOUCH_MS
 export function useSchoolPresence() {
   const profile = useAuthStore(s => s.profile)
   const profileId = profile?.id ?? null
+  const measureTime = profile?.role === 'student'
 
   useEffect(() => {
     // Гость ничего не отмечает: не вошёл — не «онлайн в школе».
@@ -44,6 +44,14 @@ export function useSchoolPresence() {
     let stopped = false
     let lastTouchAt = 0
     let inFlight = false
+    let timeRpcAvailable = true
+
+    async function touch(fn: string) {
+      type Response = { error?: { code?: string } | null }
+      type Touch = PromiseLike<Response> & { abortSignal?: (s: AbortSignal) => PromiseLike<Response> }
+      const call = (supabase as unknown as { rpc: (name: string) => Touch }).rpc(fn)
+      return call.abortSignal ? call.abortSignal(AbortSignal.timeout(TOUCH_TIMEOUT_MS)) : call
+    }
 
     function sendTouch(now: number) {
       // 27.10 (письмо ЛК_СРОЧНО_шторм_запросов_программа_курса.md): отметка
@@ -56,16 +64,21 @@ export function useSchoolPresence() {
       // Ошибку глушим намеренно: отметка присутствия не должна мешать работе,
       // как и счётчик визитов в App.tsx. Не прошла — человек пропадёт из
       // списка по истечении окна, и это честнее, чем сломанный экран.
-      // Узкий тип: `abortSignal` есть у построителя запроса supabase-js, но не у
-      // подмен в тестах — поэтому проверяем, а не зовём вслепую.
-      type Touch = PromiseLike<unknown> & { abortSignal?: (s: AbortSignal) => PromiseLike<unknown> }
-      let call: Touch | PromiseLike<unknown>
-      try {
-        call = (supabase as unknown as { rpc: (fn: string) => Touch }).rpc('school_presence_touch')
-        const c = call as Touch
-        if (c && typeof c.abortSignal === 'function') call = c.abortSignal(AbortSignal.timeout(TOUCH_TIMEOUT_MS))
-      } catch { inFlight = false; return }
-      void Promise.resolve(call).then(() => {}, () => {}).finally(() => { inFlight = false })
+      async function send() {
+        try {
+          if (measureTime && timeRpcAvailable && !document.hidden) {
+            const { error } = await touch('school_presence_touch_with_time')
+            if (error?.code !== 'PGRST202' && error?.code !== '42883') return
+            timeRpcAvailable = false
+          }
+          if (!stopped) await touch('school_presence_touch')
+        } catch {
+          // Присутствие не должно мешать работе при сбое сети.
+        } finally {
+          inFlight = false
+        }
+      }
+      void send()
     }
 
     function tick() {
@@ -115,7 +128,7 @@ export function useSchoolPresence() {
       for (const name of ACTIVITY_EVENTS) document.removeEventListener(name, onActivity)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [profileId])
+  }, [profileId, measureTime])
 }
 
 /**

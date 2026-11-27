@@ -9,8 +9,8 @@
  *
  * Словарь:
  *  - программа — шаблон (`is_template`), каркас курса;
- *  - класс — копии шаблонов с одинаковым коротким именем (`copyDisplayTitle`
- *    + `classKey`): «11А» на математике и на физике — один класс;
+ *  - класс — копии шаблонов с общей группой по названию или с одинаковым
+ *    коротким именем (`copyDisplayTitle` + `classKey`);
  *  - другие курсы — всё живое, что не шаблон и не копия живого шаблона;
  *  - архив — как раньше (`isArchived`): убранное осознанно, без родства.
  */
@@ -26,6 +26,7 @@ export interface OverviewCourse extends GroupableCourse {
   subject: string
   exam_type: string
   owner_id: string | null
+  groups?: { name: string; is_active: boolean }[]
 }
 
 /** Строка `teacher_courses_overview` в именах клиента. */
@@ -198,8 +199,9 @@ const byTitle = (a: { title: string }, b: { title: string }) =>
  *  - Программы (шаблоны) — по названию: так «1 часть» стоит перед «Второй
  *    частью», а математика перед физикой, и этот порядок — порядок карточек в
  *    строке класса.
- *  - Класс — копии живых шаблонов с одинаковым `classKey` короткого имени.
- *    Имя строки — самое частое написание (`pickDisplayName`).
+ *  - Класс — копии живых шаблонов с одинаковым именем единственной активной
+ *    группы. Если у группы нет совпадения среди курсов, оставляем имя копии:
+ *    старые записи могут называться «Шаблон (копия)» или полным именем курса.
  *  - Классы — по убыванию учеников (различных по курсам строки), при равенстве
  *    — по имени. Пока цифр нет — по имени.
  *  - Пунктирная плашка «… здесь нет» — только когда у класса хотя бы две
@@ -228,12 +230,31 @@ export function buildCoursesLayout<T extends OverviewCourse>(
   })
   const templateOrder = new Map(groups.map((g, i) => [g.template.id, i]))
 
+  const groupNameByCourse = new Map<string, string>()
+  const groupNameCounts = new Map<string, number>()
+  for (const { copies } of groups) {
+    for (const copy of copies) {
+      const active = copy.groups?.filter(group => group.is_active)
+      const name = active?.length === 1 ? active[0].name.trim() : ''
+      if (!name) continue
+      groupNameByCourse.set(copy.id, name)
+      const key = classKey(name)
+      groupNameCounts.set(key, (groupNameCounts.get(key) ?? 0) + 1)
+    }
+  }
+
+  const classNameOf = (copy: T, template: T) => {
+    const groupName = groupNameByCourse.get(copy.id)
+    if (groupName && (groupNameCounts.get(classKey(groupName)) ?? 0) > 1) return groupName
+    return copyDisplayTitle(copy.title, template.title)
+  }
+
   // Классы.
   interface Draft { key: string; raw: string[]; cards: { card: CourseCardData<T>; templateId: string }[] }
   const drafts = new Map<string, Draft>()
   for (const g of groups) {
     for (const copy of g.copies) {
-      const className = copyDisplayTitle(copy.title, g.template.title)
+      const className = classNameOf(copy, g.template)
       const key = classKey(className)
       const d = drafts.get(key) ?? { key, raw: [], cards: [] }
       d.raw.push(className)
@@ -285,7 +306,7 @@ export function buildCoursesLayout<T extends OverviewCourse>(
     stat: statOf(g.template.id),
     cards: g.copies
       .map(copy => {
-        const raw = copyDisplayTitle(copy.title, g.template.title)
+        const raw = classNameOf(copy, g.template)
         const row = classes[classIndex.get(classKey(raw))!]
         return { course: copy, stat: statOf(copy.id), program: programs.get(g.template.id)!, className: row?.name ?? raw }
       })
@@ -299,64 +320,6 @@ export function buildCoursesLayout<T extends OverviewCourse>(
     other: grouped.loose.map(c => ({ course: c, stat: statOf(c.id), program: programInfo(c) })),
     archived: grouped.archived,
   }
-}
-
-// ─── Полоса внимания ────────────────────────────────────────────────────────
-
-export interface NextOpening {
-  date: string
-  courseId: string
-  /** «11А, Математика · 2 часть» — для копии; название — для прочего курса. */
-  label: string
-  /** Сколько тем этого курса откроется в тот день. */
-  count: number
-  /** Сколько ещё курсов открывают темы в тот же день. */
-  more: number
-}
-
-export interface Attention {
-  pending: number
-  pendingCourses: number
-  subs7d: number
-  next: NextOpening | null
-}
-
-/**
- * Три плитки сверху. Считаются живые курсы с учениками по смыслу — классы и
- * «другие» (шаблоны и архив — нет: учеников там нет или их больше не ведут).
- * Цифры — только по курсам, которые вернула функция, то есть где вызывающий —
- * персонал (`course_is_staff`). Нет цифр вовсе — полосы нет (null).
- * Нет плана ни у одного курса — `next` null, плитку не рисуем.
- */
-export function buildAttention<T extends OverviewCourse>(
-  layout: CoursesLayout<T>,
-  stats: CourseStats | null,
-): Attention | null {
-  if (!stats) return null
-  const live: { course: T; label: string }[] = [
-    ...layout.classes.flatMap(r => r.slots.flatMap(s => s.kind === 'course'
-      ? [{ course: s.card.course, label: `${r.name}, ${s.card.program.name}` }]
-      : [])),
-    ...layout.other.map(o => ({ course: o.course, label: o.course.title })),
-  ]
-  let pending = 0
-  let pendingCourses = 0
-  let subs7d = 0
-  const planned: { date: string; courseId: string; label: string; count: number }[] = []
-  for (const { course, label } of live) {
-    const st = stats[course.id]
-    if (!st) continue
-    pending += st.pending
-    if (st.pending > 0) pendingCourses++
-    subs7d += st.subs7d
-    if (st.nextOpen) planned.push({ date: st.nextOpen, courseId: course.id, label, count: st.nextOpenCount })
-  }
-  planned.sort((a, b) => a.date.localeCompare(b.date))
-  const first = planned[0]
-  const next = first
-    ? { ...first, more: planned.filter(p => p.date === first.date).length - 1 }
-    : null
-  return { pending, pendingCourses, subs7d, next }
 }
 
 // ─── Подписи ────────────────────────────────────────────────────────────────
@@ -392,22 +355,6 @@ export function courseChips(stat: CourseStat, todayIso: string): Chip[] {
       ? { text: `далее ${formatDayMonth(stat.nextOpen, todayIso)}`, tone: 'plan' }
       : { text: 'плана нет', tone: 'mute' },
   ]
-}
-
-/** Подпись плитки «ждут проверки»: «работа ждёт» / «работы ждут» / «работ ждут». */
-export function pendingTileLabel(a: Attention): string {
-  const words = plural(a.pending, 'работа ждёт', 'работы ждут', 'работ ждут')
-  return a.pending > 0 ? `${words} проверки · ${coursesLabel(a.pendingCourses)}` : `${words} проверки`
-}
-
-export function subsTileLabel(a: Attention): string {
-  return `${plural(a.subs7d, 'сдача', 'сдачи', 'сдач')} за 7 дней по всем классам`
-}
-
-export function nextTileLabel(n: NextOpening): string {
-  const topics = n.count > 1 ? ` (${pluralTopics(n.count)})` : ''
-  const more = n.more > 0 ? ` и ещё ${coursesLabel(n.more)}` : ''
-  return `следующее открытие по плану · ${n.label}${topics}${more}`
 }
 
 /** Подпись прочего курса: «2 ученика» или «физика · 1 тема · без учеников». */

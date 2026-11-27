@@ -51,14 +51,14 @@ afterEach(() => {
 describe('отметка присутствия', () => {
   it('вошедший отмечается сразу при монтировании', async () => {
     renderHook(() => useSchoolPresence())
-    await waitFor(() => expect(rpc).toHaveBeenCalledWith('school_presence_touch'))
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('school_presence_touch_with_time'))
   })
 
   it('аргументов у отметки нет: profile_id берётся из auth.uid() в базе', async () => {
     renderHook(() => useSchoolPresence())
     await waitFor(() => expect(rpc).toHaveBeenCalled())
     // Передать профиль аргументом значило бы дать клиенту отметиться за чужого.
-    expect(rpc.mock.calls[0]).toEqual(['school_presence_touch'])
+    expect(rpc.mock.calls[0]).toEqual(['school_presence_touch_with_time'])
   })
 
   it('гость не отмечается', async () => {
@@ -110,11 +110,22 @@ describe('отметка присутствия', () => {
     expect(rpc).toHaveBeenCalledTimes(1)
     await act(async () => { await vi.advanceTimersByTimeAsync(40_000) })
     expect(rpc).toHaveBeenCalledTimes(2)
+    expect(rpc).toHaveBeenLastCalledWith('school_presence_touch')
 
     const afterFirstMinute = rpc.mock.calls.length
     await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000) })
     // Десять минут — десять отметок, не тридцать.
     expect(rpc.mock.calls.length - afterFirstMinute).toBe(10)
+  })
+
+  it('до миграции возвращается к обычным отметкам присутствия', async () => {
+    vi.useFakeTimers()
+    rpc.mockResolvedValueOnce({ data: null, error: { code: 'PGRST202' } })
+    renderHook(() => useSchoolPresence())
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(rpc.mock.calls).toEqual([['school_presence_touch_with_time'], ['school_presence_touch']])
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(rpc.mock.calls.slice(2)).toEqual([['school_presence_touch']])
   })
 
   it('в фоне после получаса отметки прекращаются', async () => {
@@ -261,6 +272,6 @@ describe('SchoolPresencePublisher', () => {
   it('ничего не рисует, но отмечает', async () => {
     const { container } = render(<SchoolPresencePublisher />)
     expect(container).toBeEmptyDOMElement()
-    await waitFor(() => expect(rpc).toHaveBeenCalledWith('school_presence_touch'))
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith('school_presence_touch_with_time'))
   })
 })

@@ -15,7 +15,7 @@ import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
  * Владельцу в режиме учителя RLS отдаёт всю школу — сужаем тем же набором,
  * что у списка пробников (`useMyTeachingScope`, §219).
  */
-export interface MockExamGroupOption { id: string; name: string; count: number | null }
+export interface MockExamGroupOption { id: string; name: string; count: number | null; courseName?: string }
 
 type Res = { data: any[] | null; error: { message?: string } | null }
 interface Chain extends PromiseLike<Res> { order(c: string): Chain }
@@ -30,12 +30,12 @@ export function useMockExamGroups(extra?: { id: string; name: string } | null) {
   useEffect(() => {
     if (scopeKey === 'loading') return
     let cancelled = false
-    db.from('groups').select('id, name, course_id, is_active, group_students(count)').order('name').then(({ data }) => {
+    db.from('groups').select('id, name, course_id, is_active, courses(title), group_students(count)').order('name').then(({ data }) => {
       if (cancelled) return
       const allowed = scope.active ? new Set(scope.courseIds) : null
       const list = (data ?? [])
         .filter(g => g.is_active !== false && (!allowed || allowed.has(g.course_id)))
-        .map(g => ({ id: g.id as string, name: (g.name as string) || 'группа', count: countOf(g.group_students) }))
+        .map(g => ({ id: g.id as string, name: (g.name as string) || 'группа', count: countOf(g.group_students), courseName: g.courses?.title as string | undefined }))
       setGroups(list)
       setLoading(false)
     })

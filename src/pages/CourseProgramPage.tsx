@@ -1424,7 +1424,7 @@ export function CourseProgramPage() {
     loadModules, saveCourse, createCourse,
     saveModule, createModule, deleteModule,
     saveTopic, createTopic, deleteTopic,
-  } = useCourseProgram()
+  } = useCourseProgram({ includeGroupNames: true })
 
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -2090,7 +2090,6 @@ export function CourseProgramPage() {
         ) : (
           <CoursesOverview
             layout={layout}
-            stats={overview.stats}
             statsLoading={overview.loading}
             view={coursesView}
             ownerLabelFor={ownerLabelFor}

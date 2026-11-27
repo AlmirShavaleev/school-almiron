@@ -27,23 +27,38 @@ function renderAt(path: string) {
 }
 
 describe('меню ученика', () => {
-  it('компьютер: витрина, оплата и настройки доступны прямо в панели', () => {
+  it('компьютер: в панели главные разделы и быстрый вход в план', () => {
     renderAt('/my-homework')
     const rail = screen.getByTestId('student-rail')
-    expect(within(rail).getAllByRole('link').map(a => a.textContent)).toEqual(['Главная', 'Мои курсы', '3ДЗ', 'Банк', 'Пробники', 'Витрина курсов', 'Оплата', 'Настройки'])
+    expect(within(rail).getAllByRole('link').map(a => a.textContent)).toEqual([
+      'Главная', 'Мои курсы', '3ДЗ', 'Банк', 'Пробники', 'Мой план',
+    ])
     expect(within(rail).getByTestId('student-nav-hw')).toHaveAttribute('aria-current', 'page')
     expect(within(rail).getByTestId('student-nav-bank')).toHaveAttribute('href', '/catalog')
+    expect(within(rail).getByTestId('student-nav-work-plan')).toHaveAttribute('href', '/my-work-plan')
+    expect(within(rail).getByRole('button', { name: 'Ещё' })).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('прямая ссылка оплаты активна, выход доступен без «Ещё»', () => {
+  it('«Ещё» показывает витрину, оплату и настройки, выход остаётся в панели', () => {
     renderAt('/my-subscription')
     const rail = screen.getByTestId('student-rail')
-    expect(screen.getByTestId('student-nav-subscription')).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByTestId('student-nav-storefront')).toHaveAttribute('href', '/courses')
-    expect(within(rail).queryByRole('button', { name: 'Ещё' })).toBeNull()
+    const more = within(rail).getByRole('button', { name: 'Ещё' })
+    expect(more).toHaveAttribute('data-active', 'true')
     expect(within(rail).getByRole('button', { name: 'Выйти' })).toBeInTheDocument()
-    fireEvent.click(screen.getByTestId('student-nav-settings'))
+    fireEvent.click(more)
+    expect(more).toHaveAttribute('aria-expanded', 'true')
+    const popup = within(screen.getByTestId('student-rail-more'))
+    expect(popup.getByRole('link', { name: /Оплата/ })).toHaveAttribute('aria-current', 'page')
+    expect(popup.getByRole('link', { name: 'Витрина курсов' })).toHaveAttribute('href', '/courses')
+    fireEvent.click(popup.getByRole('link', { name: 'Настройки' }))
     expect(screen.getByTestId('where')).toHaveTextContent('/settings')
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(more)
+    screen.getByRole('link', { name: 'Настройки' }).focus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(more).toHaveFocus()
+    expect(more).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('телефон: панель на 5 мест (без «Пробников»), «Пробники» — в листе «Ещё»', () => {
@@ -53,6 +68,7 @@ describe('меню ученика', () => {
     fireEvent.click(within(bar).getByTestId('student-tab-more'))
     const sheet = screen.getByTestId('student-more-sheet')
     expect(within(sheet).getAllByRole('menuitem')[0]).toHaveTextContent('Пробники')
+    expect(within(sheet).getByRole('menuitem', { name: 'Мой план работы' })).toBeInTheDocument()
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByTestId('student-more-sheet')).toBeNull()
   })

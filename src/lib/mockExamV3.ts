@@ -469,11 +469,11 @@ export function readiness(o: {
  * §229: при нескольких вариантах каждому нужно условие — иначе часть учеников
  * останется без заданий (`missingCondition` — номера таких вариантов).
  */
-export function assignProblems(o: { title: string; templateId: string; groups: number; startsIso: string | null; draft: boolean; durationOk: boolean; missingCondition?: number[]; variantNames?: Record<number, string> }): string[] {
+export function assignProblems(o: { title: string; templateId: string; groups: number; startsIso: string | null; draft: boolean; durationOk: boolean; missingCondition?: number[]; variantNames?: Record<number, string>; missingGroupMessage?: string }): string[] {
   const out: string[] = []
   if (!o.title.trim()) out.push('Нужно название')
   if (!o.templateId) out.push('Нужен шаблон — по нему строится бланк и таблица баллов')
-  if (o.groups === 0) out.push('Выберите группу')
+  if (o.groups === 0) out.push(o.missingGroupMessage ?? 'Выберите группу')
   if (!o.durationOk) out.push('Длительность — от 10 до 720 минут')
   if (!o.draft && !o.startsIso) out.push('Нужны дата и время начала')
   if (!o.draft && o.missingCondition?.length) {

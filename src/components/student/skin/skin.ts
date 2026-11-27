@@ -8,6 +8,7 @@
  */
 const SKINNED: readonly RegExp[] = [
   /^\/student\/?$/,
+  /^\/my-work-plan(?:\/|$)/,
   /^\/my-mock-exams\/?$/,
   // «Мои курсы» (письмо ЛК_стиль_мои_курсы.md, 15.10).
   /^\/my-course\/?$/,
@@ -27,16 +28,16 @@ export function studentSkinPage(pathname: string): boolean {
 /**
  * 3D-стикеры кабинета — набор лендинга, перекрашенный под бренд (синий и
  * оранжевый; исходники `D:\Задачник\ЛЕНДИНГ\3d-иконки\`, 3dicons.co, CC0),
- * WebP в `public/brand/stu/`. Фигуры для планов и пробников добавлены
- * из материалов школы. `gift` — акцент плашки пробного периода.
- * `telegram` — синий пузырь из набора
+ * WebP в `public/brand/stu/`. `plan-*` — фигуры для карточек планов,
+ * `gift` — акцент плашки пробного периода. `telegram` — синий пузырь из набора
  * (chat-bubble-blue), молния Messenger заменена бумажным самолётиком (15.10,
  * владелец): плашка «Привязать Telegram».
  */
 export const STICKERS = [
   'play', 'book', 'target', 'check', 'clock', 'bell', 'calendar', 'calendar25',
   'mail', 'lock', 'search', 'chat', 'rocket', 'gift', 'telegram',
-  'plan-target', 'plan-rocket', 'mock-medal', 'mock-crown',
+  'plan-target', 'plan-rocket', 'plan-clock',
+  'mock-medal', 'mock-crown',
 ] as const
 export type StickerName = (typeof STICKERS)[number]
 

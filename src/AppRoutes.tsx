@@ -17,6 +17,8 @@ const DashboardPage = lazyPage('DashboardPage', () => import('@/pages/DashboardP
 // Role dashboards
 const StudentDashboard = lazyPage('StudentDashboard', () => import('@/pages/student/StudentDashboard').then(m => ({ default: m.StudentDashboard })))
 const TeacherDashboard = lazyPage('TeacherDashboard', () => import('@/pages/teacher/TeacherDashboard').then(m => ({ default: m.TeacherDashboard })))
+const MyWorkPlansPage = lazyPage('MyWorkPlansPage', () => import('@/components/workPlans/StudentWorkPlan').then(m => ({ default: m.MyWorkPlansPage })))
+const StaffWorkPlansPage = lazyPage('StaffWorkPlansPage', () => import('@/components/workPlans/StaffWorkPlans').then(m => ({ default: m.StaffWorkPlansPage })))
 const DiagnosticsPage = lazyPage('DiagnosticsPage', () => import('@/pages/admin/DiagnosticsPage').then(m => ({ default: m.DiagnosticsPage })))
 const AdminDashboard = lazyPage('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
 const TelegramJournalPage = lazyPage('TelegramJournalPage', () => import('@/pages/admin/TelegramJournalPage').then(m => ({ default: m.TelegramJournalPage })))
@@ -157,6 +159,8 @@ export default function AppRoutes() {
         {/* Дашборды по ролям */}
         <Route path="/student" element={<RoleGuard allow={['student']} preview="stub"><StudentDashboard /></RoleGuard>} />
         <Route path="/teacher" element={<RoleGuard allow={['teacher','admin','owner']}><TeacherDashboard /></RoleGuard>} />
+        <Route path="/my-work-plan/:planId?" element={<RoleGuard allow={['student']} preview="stub"><MyWorkPlansPage /></RoleGuard>} />
+        <Route path="/student-work-plans/:planId?" element={<RoleGuard allow={['teacher','curator','admin','owner']}><StaffWorkPlansPage /></RoleGuard>} />
         {/* Маршрута /curator больше нет (снесён 2026-08-05 по решению
             владельца). «Кабинет куратора» стоял на легаси-механике —
             таблице `curators`, слоте `groups.curator_id` и мёртвом контуре

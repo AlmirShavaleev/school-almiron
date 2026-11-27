@@ -51,7 +51,7 @@ export function TopicTimedWorkStudent({
   const {
     homework, files, attempts, attemptFiles, reviews, loading, error, reload,
     startAttempt, uploadAttemptFiles, removeAttemptFile, reorderAttemptFiles, submitAttempt,
-  } = useTopicHomework(topicId, { preview })
+  } = useTopicHomework(topicId, { preview, timedStudent: true })
   const { window: win, offsetMs, reload: reloadWindow } = useMyTimedWindow(
     homework?.id ?? null,
     { opensAt: homework?.opens_at ?? null, closesAt: homework?.closes_at ?? null },
@@ -74,9 +74,6 @@ export function TopicTimedWorkStudent({
   )
   const draftFiles = attempt ? attemptFiles.filter(f => f.attempt_id === attempt.id) : []
 
-  const reviewIds = useMemo(() => (attempt ? [attempt.id] : []), [attempt])
-  const reviewTasks = useReviewTasksOfAttempts(reviewIds)
-
   // Таймер тикает, пока есть что отсчитывать.
   const ticking = !attempt || attempt.status === 'draft'
   const now = useServerNow(offsetMs, ticking)
@@ -87,6 +84,9 @@ export function TopicTimedWorkStudent({
     draftFiles: draftFiles.length,
     nowMs: now,
   })
+  const reviewedAttemptId = phase === 'done' ? attempt?.id : undefined
+  const reviewIds = useMemo(() => reviewedAttemptId ? [reviewedAttemptId] : [], [reviewedAttemptId])
+  const reviewTasks = useReviewTasksOfAttempts(reviewIds)
 
   // Смена состояния по часам: окно открылось — условие теперь отдаётся,
   // перечитываем ДЗ (файлы задания) и зовём страницу (материалы). Окно
@@ -291,6 +291,7 @@ export function TopicTimedWorkStudent({
               <PageGrid
                 files={draftFiles}
                 disabled={busy || uploading || preview}
+                deferPreviews={uploading}
                 coarse={coarse}
                 onReorder={ids => run(() => reorderAttemptFiles(attempt.id, ids))}
                 onDelete={f => run(() => removeAttemptFile(f.id, f.storage_path))}
@@ -396,7 +397,7 @@ export function TopicTimedWorkStudent({
                 ? `Сдаётся автоматически в ${closeTime}`
                 : attempt?.auto_submitted
                   ? `Сдано автоматически в ${formatMoscowTime(attempt.submitted_at)}`
-                  : `Сдано в ${formatMoscowTime(attempt?.submitted_at)}`}
+                  : attempt?.submitted_at ? `Сдано в ${formatMoscowTime(attempt.submitted_at)}` : 'Работа сдана'}
             </b>
             <span className="text-[13px] text-graphite-500">
               {draftFiles.length > 0 && `${draftFiles.length} фото. `}

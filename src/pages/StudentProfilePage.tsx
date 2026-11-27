@@ -5,7 +5,7 @@ import {
   ArrowLeft, Users,
   Mail, Phone, Loader2, ChevronDown, ChevronUp, CreditCard, RefreshCw, AlertCircle,
 } from 'lucide-react'
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react'
 import { useStudentProfile } from '@/hooks/useStudentProfile'
 import { useStudentCourseMemberships } from '@/hooks/useStudentCourseMemberships'
 import { useGroups } from '@/hooks/useGroups'
@@ -22,6 +22,8 @@ import { DistributeJoinRequestWizard, type DistributeGroupOption } from '@/compo
 import { enrollableGroups } from '@/lib/enrollmentTargets'
 import { Plus, BookOpen, Calendar } from 'lucide-react'
 import { DiagnosticStaffBlock } from '@/components/student/DiagnosticStaffBlock'
+
+const WorkPlansTab = lazy(() => import('@/components/workPlans/StaffWorkPlans').then(m => ({ default: m.StaffWorkPlans })))
 
 // Кольцо посещаемости, бейдж статуса легаси-ДЗ и значок посещения удалены
 // вместе со своими блоками (см. комментарий у секции анализа ниже): все три
@@ -60,7 +62,8 @@ export function StudentProfilePage() {
   // §217. Вкладка отчёта живёт в адресе (`?tab=report`): преподаватель
   // открывает отчёт по ссылке из переписки и попадает сразу в него, а не на
   // карточку, которую надо переключать руками.
-  const tab = searchParams.get('tab') === 'report' ? 'report' : 'card'
+  const requestedTab = searchParams.get('tab')
+  const tab = requestedTab === 'report' || requestedTab === 'work-plan' ? requestedTab : 'card'
   const { data: s, loading } = useStudentProfile(id || null)
   const currentUserRole = useAuthStore(state => state.profile?.role)
   const isAdmin = currentUserRole === 'admin' || currentUserRole === 'owner'
@@ -217,10 +220,21 @@ export function StudentProfilePage() {
           >
             Отчёт для родителя
           </button>
+          <button role="tab" aria-selected={tab === 'work-plan'} data-testid="student-tab-work-plan"
+            onClick={() => navigate(`/students/${id}?tab=work-plan`, { replace: true })}
+            className={cn('px-3 py-2 text-sm font-medium transition-colors',
+              tab === 'work-plan' ? 'border-b-2 border-primary-600 text-graphite-950' : 'text-graphite-500 hover:text-graphite-800')}>
+            План работы
+          </button>
         </div>
       )}
 
       {s.student_id && tab === 'report' && <StudentReportTab studentId={s.student_id} />}
+      {s.student_id && tab === 'work-plan' && (
+        <Suspense fallback={<p role="status" className="text-sm text-graphite-600">Загружаю планы…</p>}>
+          <WorkPlansTab key={s.student_id} studentId={s.student_id} />
+        </Suspense>
+      )}
 
       {tab === 'card' && (
       <>

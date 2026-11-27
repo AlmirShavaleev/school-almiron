@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildAttention, buildCoursesLayout, courseChips, detectPart, formatDayMonth, nextTileLabel,
-  normalizeOverview, otherCourseLabel, pendingTileLabel, programGenitive, programInfo, subsTileLabel,
+  buildCoursesLayout, courseChips, detectPart, formatDayMonth, normalizeOverview,
+  otherCourseLabel, programGenitive, programInfo,
   type CourseStat, type CourseStats, type OverviewCourse,
 } from '@/lib/coursesOverview'
 
 /**
- * §244. Раскладка страницы «Курсы»: классы, программы, прочее, полоса внимания
- * и подписи. Данные — как на проде у владельца: три шаблона, классы 11А и 10А,
+ * §244. Раскладка страницы «Курсы»: классы, программы, прочее и подписи.
+ * Данные — как на проде у владельца: три шаблона, классы 11А и 10А,
  * группа индивидуальных учеников под двумя написаниями.
  */
 
@@ -111,6 +111,30 @@ describe('вид «По классам»', () => {
     expect(ind.courseCount).toBe(3)
   })
 
+  it('собирает курсы одноимённых активных групп, даже если в названии курса группа отсутствует', () => {
+    const sharedGroup = { name: 'Ученики 2026-2027', is_active: true }
+    const cohortIds = ['m1-ind', 'm2-ind', 'ph-ind']
+    const courses = COURSES.map(c => {
+      if (c.id === 'm1-ind') return {
+        ...c, title: 'ЕГЭ. Математика 1 часть',
+        groups: [sharedGroup, { name: 'Старая группа', is_active: false }],
+      }
+      if (cohortIds.includes(c.id)) return { ...c, groups: [sharedGroup] }
+      if (c.id === 'ph-10') return { ...c, groups: [{ name: 'Физика ЕГЭ Шаблон (копия)', is_active: true }] }
+      return c
+    })
+    const stats = { ...STATS }
+    cohortIds.forEach(id => { stats[id] = stat(id, { students: 4, studentIds: ids('ind', 4) }) })
+    const updated = buildCoursesLayout(courses, stats)
+
+    expect(names(updated.classes)).toEqual(['11А', '10А', 'Ученики 2026-2027'])
+    const cohort = updated.classes[2]
+    expect(cohort).toMatchObject({ courseCount: 3, students: 4 })
+    expect(slotTitles(cohort)).toEqual(['Математика · 1 часть', 'Математика · 2 часть', 'Физика'])
+    expect(updated.programs.map(row => row.cards.find(card => cohortIds.includes(card.course.id))?.className))
+      .toEqual(['Ученики 2026-2027', 'Ученики 2026-2027', 'Ученики 2026-2027'])
+  })
+
   it('классы — по убыванию различных учеников; ученик на двух курсах класса считается один раз', () => {
     expect(layout.classes.map(c => c.students)).toEqual([24, 17, 6])
   })
@@ -185,46 +209,6 @@ describe('другие курсы', () => {
   it('подпись: без учеников — предмет и темы, с учениками — число учеников', () => {
     expect(otherCourseLabel(layout.other[0])).toBe('физика · 1 тема · без учеников')
     expect(otherCourseLabel(layout.other[1])).toBe('2 ученика')
-  })
-})
-
-describe('полоса внимания', () => {
-  const layout = buildCoursesLayout(COURSES, STATS)
-  const a = buildAttention(layout, STATS)!
-
-  it('ждут проверки и сдачи — сумма по классам и прочим, без шаблонов и архива', () => {
-    // 16 + 1 + 7 + 2 + 3 (песочница); архив «old» (5) — нет.
-    expect(a.pending).toBe(29)
-    expect(a.pendingCourses).toBe(5)
-    expect(a.subs7d).toBe(49 + 5 + 1 + 33 + 1 + 2)
-    expect(pendingTileLabel(a)).toBe('работ ждут проверки · 5 курсов')
-    // 91 — «сдача», как «21 сдача».
-    expect(subsTileLabel(a)).toBe('сдача за 7 дней по всем классам')
-  })
-
-  it('следующее открытие — ближайшая дата среди классов; шаблон и архив не в счёт', () => {
-    // У шаблона физики 1 окт, у архива 2 окт — их не видно ученикам.
-    expect(a.next).toMatchObject({ date: '2026-10-12', courseId: 'm2-11', label: '11А, Математика · 2 часть', count: 2, more: 1 })
-    expect(nextTileLabel(a.next!)).toBe('следующее открытие по плану · 11А, Математика · 2 часть (2 темы) и ещё 1 курс')
-  })
-
-  it('плана нет ни у кого — плитки открытия нет', () => {
-    const noPlan = Object.fromEntries(Object.entries(STATS).map(([k, v]) => [k, { ...v, nextOpen: null }]))
-    expect(buildAttention(buildCoursesLayout(COURSES, noPlan), noPlan)!.next).toBeNull()
-  })
-
-  it('нет цифр — нет полосы', () => {
-    expect(buildAttention(layout, null)).toBeNull()
-  })
-
-  it('склонения плиток: 1 работа ждёт, 2 работы ждут', () => {
-    const one = buildAttention(buildCoursesLayout([COURSES[12]], { sand: stat('sand', { pending: 1, subs7d: 1 }) }), { sand: stat('sand', { pending: 1, subs7d: 1 }) })!
-    expect(pendingTileLabel(one)).toBe('работа ждёт проверки · 1 курс')
-    expect(subsTileLabel(one)).toBe('сдача за 7 дней по всем классам')
-    const two = { pending: 2, pendingCourses: 2, subs7d: 3, next: null }
-    expect(pendingTileLabel(two)).toBe('работы ждут проверки · 2 курса')
-    expect(subsTileLabel(two)).toBe('сдачи за 7 дней по всем классам')
-    expect(pendingTileLabel({ ...two, pending: 0, pendingCourses: 0 })).toBe('работ ждут проверки')
   })
 })
 

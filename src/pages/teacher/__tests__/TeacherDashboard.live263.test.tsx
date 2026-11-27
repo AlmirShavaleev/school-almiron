@@ -14,6 +14,10 @@ vi.mock('@/hooks/useTeacherHome', () => ({
 }))
 vi.mock('@/hooks/useTeacherActivity', () => ({
   useTeacherActivity: () => ({ data: null, loading: false, failed: false, reload: vi.fn() }),
+  useTeacherActivityPeriod: () => ({ data: null, loading: false, failed: false, reload: vi.fn() }),
+}))
+vi.mock('@/hooks/useTeacherStudentActivity', () => ({
+  useTeacherPresence: () => ({ students: [], loading: false, failed: false, reload: vi.fn() }),
 }))
 
 import { TeacherDashboard } from '@/pages/teacher/TeacherDashboard'

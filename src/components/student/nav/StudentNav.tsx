@@ -1,44 +1,49 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Timer, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { matchPath, NavLink, useLocation } from 'react-router-dom'
+import { Ellipsis, Menu, X } from 'lucide-react'
 import { Mark } from '@/pages/landing/Brand'
 import { useStudentNav, type MoreItem } from '@/hooks/useStudentNav'
 
-/** Общий список для мобильного меню и меню профиля. На компьютере ссылки
- * находятся прямо в боковой панели, выход — отдельная кнопка внизу. */
-export function MoreList({ items, onDone }: { items: MoreItem[]; onDone: () => void }) {
-  const navigate = useNavigate()
+function MoreList({ items, onDone, navigation }: { items: MoreItem[]; onDone: () => void; navigation?: boolean }) {
+  const itemRole = navigation ? undefined : 'menuitem'
+  const itemClass = 'stu-more-item stu-focus'
   return (
-    <ul className="stu-more-list" role="menu">
-      {items.map(i => (
-        <li key={i.key} role="none">
-          <button
-            type="button"
-            role="menuitem"
-            className="stu-more-item stu-focus"
-            data-testid={`student-more-${i.key}`}
-            onClick={() => { onDone(); if (i.onClick) i.onClick(); else if (i.to) navigate(i.to) }}
-          >
-            {i.icon}
-            <span className="min-w-0 flex-1 truncate text-left">{i.label}</span>
-            {i.tag && <span className="stu-more-tag">{i.tag}</span>}
-          </button>
-        </li>
-      ))}
+    <ul className="stu-more-list" role={navigation ? undefined : 'menu'}>
+      {items.map(item => {
+        const body = <>
+          {item.icon}
+          <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+          {item.tag && <span className="stu-more-tag">{item.tag}</span>}
+        </>
+        const testId = `student-more-${item.key}`
+        return (
+          <li key={item.key} role={navigation ? undefined : 'none'}>
+            {item.to
+              ? <NavLink to={item.to} role={itemRole} className={itemClass} data-testid={testId} onClick={onDone}>{body}</NavLink>
+              : <button type="button" role={itemRole} className={itemClass} data-testid={testId}
+                  onClick={() => { onDone(); item.onClick?.() }}>{body}</button>}
+          </li>
+        )
+      })}
     </ul>
   )
 }
 
 /** Закрыть по клику мимо и Esc. */
-function useDismiss(open: boolean, close: () => void, ref: React.RefObject<HTMLElement | null>) {
+function useDismiss(open: boolean, close: () => void, ref: React.RefObject<HTMLElement | null>, trigger?: React.RefObject<HTMLButtonElement | null>) {
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) close() }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        close()
+        trigger?.current?.focus()
+      }
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
-  }, [open, close, ref])
+  }, [open, close, ref, trigger])
 }
 
 function Badge({ n }: { n?: number | null }) {
@@ -49,40 +54,57 @@ function Badge({ n }: { n?: number | null }) {
 export function StudentNav() {
   const { main, more } = useStudentNav()
   const { pathname } = useLocation()
+  const [railOpen, setRailOpen] = useState(false)
+  const railMoreRef = useRef<HTMLDivElement>(null)
+  const railTrigger = useRef<HTMLButtonElement>(null)
+  const railMoreId = useId()
   const [sheet, setSheet] = useState(false)
   const sheetRef = useRef<HTMLDivElement>(null)
+  useDismiss(railOpen, () => setRailOpen(false), railMoreRef, railTrigger)
   useDismiss(sheet, () => setSheet(false), sheetRef)
 
-  const railLinks = more.filter(i => i.to)
+  const workPlan = more.find(i => i.key === 'work-plan')
+  const railMore = more.filter(i => i.to && i.key !== 'work-plan')
+  const railMoreActive = railMore.some(i => i.to && matchPath({ path: i.to, end: false }, pathname))
   const logout = more.find(i => i.key === 'logout')
 
   const mobileMain = main.filter(i => i.key !== 'mocks')
-  const mobileMore: MoreItem[] = [
-    { key: 'mocks', label: 'Пробники', icon: <Timer size={18} aria-hidden />, to: '/my-mock-exams' },
-    ...more,
-  ]
-  const moreActive = /^\/(subscription|my-subscription|courses|settings|my-mock-exams)/.test(pathname)
+  const mobileMore = [...main.filter(i => i.key === 'mocks'), ...more]
+  const mobileMoreActive = mobileMore.some(i => i.to && matchPath({ path: i.to, end: false }, pathname))
 
   return (
     <>
       {/* Компьютер: узкая колонка */}
       <nav className="stu-rail" aria-label="Меню ученика" data-testid="student-rail">
         <span className="stu-rail-logo"><Mark size={34} /></span>
-        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-        {main.map(i => (
-          <NavLink key={i.key} to={i.to} className="stu-rail-item stu-focus" data-active={i.match.test(pathname) || undefined}
-            aria-current={i.match.test(pathname) ? 'page' : undefined} data-testid={`student-nav-${i.key}`}>
-            <span className="relative">{i.icon}<Badge n={i.badge} /></span>
-            <span>{i.label}</span>
-          </NavLink>
-        ))}
-        {railLinks.map(i => (
-          <NavLink key={i.key} to={i.to!} className="stu-rail-item stu-focus"
-            data-active={pathname.startsWith(i.to!) || undefined} aria-current={pathname.startsWith(i.to!) ? 'page' : undefined}
-            title={i.tag ? `${i.label} · ${i.tag}` : i.label} data-testid={`student-nav-${i.key}`}>
-            {i.icon}<span>{i.label}</span>
-          </NavLink>
-        ))}
+        <div className="stu-rail-links">
+          {main.map(i => (
+            <NavLink key={i.key} to={i.to} className="stu-rail-item stu-focus" data-active={i.match.test(pathname) || undefined}
+              aria-current={i.match.test(pathname) ? 'page' : undefined} data-testid={`student-nav-${i.key}`}>
+              <span className="relative">{i.icon}<Badge n={i.badge} /></span>
+              <span>{i.label}</span>
+            </NavLink>
+          ))}
+          {workPlan?.to && (
+            <NavLink to={workPlan.to} className="stu-rail-item stu-focus" aria-label={workPlan.label} title={workPlan.label}
+              data-testid="student-nav-work-plan">
+              {workPlan.icon}<span>Мой план</span>
+            </NavLink>
+          )}
+          <div ref={railMoreRef} className="relative" onBlur={e => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setRailOpen(false)
+          }}>
+            <button ref={railTrigger} type="button" className="stu-rail-item stu-focus" aria-expanded={railOpen}
+              aria-controls={railOpen ? railMoreId : undefined} data-active={railMoreActive || railOpen || undefined}
+              onClick={() => setRailOpen(open => !open)} data-testid="student-nav-more">
+              <Ellipsis size={22} aria-hidden /><span>Ещё</span>
+            </button>
+            {railOpen && (
+              <div className="stu-more-pop" id={railMoreId} data-testid="student-rail-more">
+                <MoreList items={railMore} onDone={() => setRailOpen(false)} navigation />
+              </div>
+            )}
+          </div>
         </div>
         {logout && (
           <button type="button" className="stu-rail-item stu-focus w-full shrink-0" onClick={logout.onClick} data-testid="student-nav-logout">
@@ -101,7 +123,7 @@ export function StudentNav() {
           </NavLink>
         ))}
         <button type="button" className="stu-tab stu-focus" aria-haspopup="menu" aria-expanded={sheet}
-          data-active={moreActive || undefined} onClick={() => setSheet(true)} data-testid="student-tab-more">
+          data-active={mobileMoreActive || undefined} onClick={() => setSheet(true)} data-testid="student-tab-more">
           <Menu size={22} aria-hidden /><span>Меню</span>
         </button>
       </nav>

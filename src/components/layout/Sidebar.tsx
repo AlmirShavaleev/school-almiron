@@ -87,6 +87,7 @@ const navItems: NavItem[] = [
   { label: 'Тесты',             path: '/variants', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true },
   { label: 'Группы',            path: '/groups',         icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'], hidden: true }, // курс = одна группа (§9.1) — раздел скрыт, страница жива по URL
   { label: 'Ученики',           path: '/students',       icon: <Users size={18} />,         roles: ['teacher', 'curator', 'admin', 'owner'] },
+  { label: 'Планы учеников',     path: '/student-work-plans', icon: <ListChecks size={18} />, roles: ['teacher', 'curator', 'admin', 'owner'] },
   { label: 'Домашние задания',  path: '/homeworks',      icon: <ClipboardList size={18} />, roles: ['teacher', 'curator', 'admin'], hidden: true },
   // §215. Открыт преподавателю, админу и владельцу: экран заработал, когда
   // починили запись результатов. Ученический пункт (выше, раздел «Учёба»)
@@ -139,7 +140,7 @@ const STAFF_SECTION_LABELS: Array<{ title: string; paths: string[] }> = [
   // занятия вне платформы, `lessons` и `attendance` пусты по построению.
   // Таблицы не тронуты — если школа начнёт вести занятия внутри, страницы
   // вернутся из истории.
-  { title: 'Учебный процесс', paths: ['/groups', '/students', '/course-program', '/topic-ratings', '/topic-quality', '/lesson-library'] },
+  { title: 'Учебный процесс', paths: ['/groups', '/students', '/student-work-plans', '/course-program', '/topic-ratings', '/topic-quality', '/lesson-library'] },
   { title: 'Задания', paths: ['/catalog', '/catalog/assets', '/collections', '/homework-queue', '/tests', '/variants', '/student/variants/generate', '/homeworks', '/mock-exams'] },
   { title: 'Операции', paths: ['/notifications', '/settings'] },
 ]

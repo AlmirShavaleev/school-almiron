@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useMyTeachingScope } from '@/hooks/useMyTeachingScope'
+import type { OverviewCourse } from '@/lib/coursesOverview'
 
 export interface Topic {
   id: string
@@ -65,10 +66,10 @@ function compareByOrderIndexThenId<T extends { order_index?: number | null; id: 
   return a.id.localeCompare(b.id)
 }
 
-export function useCourseProgram() {
+export function useCourseProgram({ includeGroupNames = false }: { includeGroupNames?: boolean } = {}) {
   const profile = useAuthStore(s => s.profile)
   const scope = useMyTeachingScope()
-  const [courses,  setCourses]  = useState<Course[]>([])
+  const [courses,  setCourses]  = useState<Array<Course & Pick<OverviewCourse, 'groups'>>>([])
   const [loading,  setLoading]  = useState(true)
   const [tick,     setTick]     = useState(0)
   const reload = useCallback(() => setTick(t => t + 1), [])
@@ -86,7 +87,8 @@ export function useCourseProgram() {
         // (`courses_select_scoped` отдаёт свои и те, где он персонал), а
         // владельца-админа не спасало ничто: `is_admin_or_owner()` отдаёт всю
         // школу, и в режиме учителя он видел все 8 курсов чужими именами.
-        const { data } = await supabase.from('courses').select('*').order('title')
+        const columns = includeGroupNames ? '*, groups!groups_course_id_fkey(name, is_active)' : '*'
+        const { data } = await supabase.from('courses').select(columns).order('title')
         const all = (data || []) as any[]
         setCourses((scope.active
           ? all.filter(c => c.owner_id === profile!.id || scope.courseIds.includes(c.id))
@@ -96,7 +98,7 @@ export function useCourseProgram() {
       }
     }
     load()
-  }, [profile, scope.active, scope.loading, scope.courseIds, tick])
+  }, [profile, scope.active, scope.loading, scope.courseIds, tick, includeGroupNames])
 
   async function loadModules(courseId: string): Promise<Module[]> {
     const { data: mods, error: modsErr } = await supabase

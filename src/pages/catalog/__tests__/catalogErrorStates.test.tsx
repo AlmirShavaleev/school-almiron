@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   useCatalogPhysicsTopicSections: vi.fn(),
   useCatalogSearch: vi.fn(),
   useCatalogTopicTasks: vi.fn(),
-  useCatalogOverview: vi.fn(),
+  useCatalogDirections: vi.fn(),
 }))
 
 vi.mock('@/hooks/useCatalog', () => ({
@@ -30,8 +30,8 @@ vi.mock('@/hooks/useCatalog', () => ({
   ],
 }))
 
-vi.mock('@/hooks/useCatalogOverview', () => ({
-  useCatalogOverview: (...args: unknown[]) => mocks.useCatalogOverview(...args),
+vi.mock('@/hooks/useCatalogDirections', () => ({
+  useCatalogDirections: (...args: unknown[]) => mocks.useCatalogDirections(...args),
 }))
 
 vi.mock('@/store/authStore', () => ({
@@ -66,7 +66,7 @@ describe('Catalog error states', () => {
   })
 
   it('лендинг каталога: ошибка доступа — направления скрыты, «Повторить» есть', () => {
-    mocks.useCatalogOverview.mockReturnValue({ overview: null, loading: false, error: 'overview failed', retry: vi.fn() })
+    mocks.useCatalogDirections.mockReturnValue({ directions: undefined, loading: false, error: true, retry: vi.fn() })
     render(
       <MemoryRouter initialEntries={['/catalog']}>
         <Routes>
@@ -75,8 +75,8 @@ describe('Catalog error states', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.queryByTestId('exam-card')).toBeNull()
-    expect(screen.queryByRole('link', { name: /Открыть номера/ })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Направления каталога' })).toBeNull()
+    expect(screen.getByTestId('catalog-home-error')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument()
     expect(document.querySelector('.animate-pulse')).toBeNull()
   })

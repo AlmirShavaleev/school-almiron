@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import { useMockExamGrid, type GridLesson, type GridStudent, type GridWork } from '@/hooks/useMockExamGrid'
 import { SignedFileLink } from '@/components/ui/SignedFileLink'
+import { MockExamExcelButton } from '@/components/mockExams/MockExamExcelButton'
 import { MOCK_EXAMS_BUCKET, mskDay, mskDayLong, mskTime } from '@/lib/mockExamLesson'
 import { awaitsKeyCheck, cellLook, gridSummary, isWeakTask, type CellLook } from '@/lib/mockExamGridView'
 import { useMockExamLive } from '@/hooks/useMockExamLive'
@@ -28,6 +29,7 @@ import {
   type PasteReport,
 } from '@/lib/mockExamGrid'
 import { canNotify, formatSentAt, notifyState, pendingRecipients, type NotifyState, type NotifySummary } from '@/lib/mockExamNotify'
+import type { MockExamTableExport } from '@/utils/exportExcel'
 
 /**
  * §218. Пробник по номерам заданий — таблица как в Excel.
@@ -272,6 +274,49 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
     }
   }
 
+  function excelTable(): MockExamTableExport {
+    const variants = showVar ? [null] : []
+    const part2 = p2Count > 0
+    const maxPart1 = maxPts.slice(0, p1End).reduce((sum, max) => sum + max, 0)
+    return {
+      columns: [
+        { label: 'Ученик', width: 34 },
+        ...(showVar ? [{ label: 'Вариант', width: 19 }] : []),
+        ...maxPts.map((_, i) => ({ label: `№${i + 1}`, width: 8 })),
+        { label: 'Часть 1', width: 12 },
+        ...(part2 ? [{ label: 'Часть 2', width: 12 }] : []),
+        { label: 'Первичный балл', width: 18 },
+        { label: 'Тестовый балл', width: 17 },
+        { label: 'Отправка сохранённого итога', width: 39 },
+      ],
+      rows: students.map((student, s) => {
+        const variant = variantOf[student.id]
+        const variantName = variant === undefined ? null : variantNames[variant]
+        const variantCell = variantName ? `${variant} · ${variantName}` : variant ?? null
+        const total = totals[s]
+        return [
+          student.name,
+          ...(showVar ? [variantCell] : []),
+          ...maxPts.map((_, t) => {
+            const cell = grid[s]?.[t]
+            return cell?.err ? cell.raw : cell?.v ?? null
+          }),
+          total?.p1 ?? null,
+          ...(part2 ? [total?.p2 ?? null] : []),
+          total?.primary ?? null,
+          total?.test ?? null,
+          resultsError != null ? 'Нет данных' : excelNotifyStatus(states[s]),
+        ]
+      }),
+      footer: [
+        ['Максимум', ...variants, ...maxPts, maxPart1, ...(part2 ? [maxPrimary - maxPart1] : []), maxPrimary],
+        ['Набрано по номеру, %', ...variants, ...stats.map(({ pct }) =>
+          pct === null ? null : { t: 'n' as const, v: pct / 100, z: '0%' })],
+        ...(avg ? [['Средний балл', ...variants, ...maxPts.map(() => null), avg.p1, ...(part2 ? [avg.p2] : []), avg.primary, avg.test]] : []),
+      ],
+    }
+  }
+
   return (
     <div className="space-y-5" data-testid="mock-exam-grid-page">
       <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 lg:flex-nowrap">
@@ -292,6 +337,7 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
           <p className="text-base leading-normal text-graphite-900 [text-wrap:pretty] sm:text-[17px]" data-testid="mock-grid-summary">{summary}</p>
         </div>
         <div className={cn('flex flex-wrap items-center gap-2 lg:shrink-0', !embedded && 'lg:pt-7')}>
+          <MockExamExcelButton exam={exam} getTable={excelTable} disabled={!students.length || exam.id !== id} />
           <Button variant="secondary" onClick={openPasteHelp} aria-expanded={helpOpen} data-testid="mock-grid-paste-button">
             <ClipboardPaste size={15} aria-hidden />Вставить из Excel
           </Button>
@@ -561,6 +607,15 @@ export function MockExamGridPage({ embedded = false, onChanged }: { embedded?: b
       )}
     </div>
   )
+}
+
+function excelNotifyStatus(state: NotifyState): string {
+  switch (state.kind) {
+    case 'none': return 'Нет сохранённого итога'
+    case 'ready': return 'Не отправлен'
+    case 'sent': return `Отправлен ${formatSentAt(state.at)} МСК`
+    case 'changed': return `Итог изменён после отправки ${formatSentAt(state.at)} МСК`
+  }
 }
 
 /**
