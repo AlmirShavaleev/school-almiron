@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 const unsaved = new Set<string | symbol>()
 const textInMemory = new Map<string, string>()
@@ -106,7 +106,13 @@ async function loadDraftFiles(key: string): Promise<File[]> {
     const request = database.transaction('attachments').objectStore('attachments').get(key)
     request.onsuccess = () => {
       const entry = request.result as { files: File[]; expiresAt: number } | undefined
-      resolve(entry && entry.expiresAt >= Date.now() ? entry.files : [])
+      if (!entry || entry.expiresAt < Date.now()) {
+        resolve([])
+      } else if (Array.isArray(entry.files) && entry.files.every(file => file instanceof File)) {
+        resolve(entry.files)
+      } else {
+        reject(new Error('Invalid draft attachments'))
+      }
     }
     request.onerror = () => reject(request.error)
   })
@@ -148,30 +154,35 @@ async function persistDraftFiles(key: string, files: File[]): Promise<void> {
 }
 
 export function useDraftFiles(key: string | null) {
-  const [snapshot, setSnapshot] = useState<{ key: string | null; files: File[] }>({ key: null, files: [] })
-  const activeKey = useRef<string | null>(null)
-  const revision = useRef(0)
+  const [attempt, setAttempt] = useState(0)
+  const restore = useMemo(() => ({ key, attempt }), [key, attempt])
+  const [snapshot, setSnapshot] = useState<{ restore: typeof restore; files: File[]; phase: 'ready' | 'error' }>()
+  const activeRestore = useRef<typeof restore | null>(null)
+  const phase = key === null ? 'ready' : snapshot?.restore === restore ? snapshot.phase : 'restoring'
+
   useLayoutEffect(() => {
-    activeKey.current = key
-    return () => { activeKey.current = null }
-  }, [key])
+    activeRestore.current = restore
+    return () => { activeRestore.current = null }
+  }, [restore])
   useEffect(() => {
-    const version = ++revision.current
+    let cancelled = false
     if (key) void loadDraftFiles(key).then(
-      restored => {
-        if (activeKey.current === key && revision.current === version) setSnapshot({ key, files: restored })
+      files => {
+        if (!cancelled && activeRestore.current === restore) setSnapshot({ restore, files, phase: 'ready' })
       },
-      () => {},
+      () => {
+        if (!cancelled && activeRestore.current === restore) setSnapshot({ restore, files: [], phase: 'error' })
+      },
     )
-    return () => { revision.current++ }
-  }, [key])
+    return () => { cancelled = true }
+  }, [key, restore])
 
   const updateFiles = useCallback((next: File[]) => {
-    if (!key || activeKey.current !== key) return
-    revision.current++
-    setSnapshot({ key, files: next })
+    if (!key || activeRestore.current !== restore || phase !== 'ready') return
+    setSnapshot({ restore, files: next, phase: 'ready' })
     void persistDraftFiles(key, next)
-  }, [key])
+  }, [key, phase, restore])
+  const retry = useCallback(() => setAttempt(value => value + 1), [])
 
-  return [key && snapshot.key === key ? snapshot.files : [], updateFiles] as const
+  return [phase === 'ready' && snapshot?.restore === restore ? snapshot.files : [], updateFiles, { phase, retry }] as const
 }

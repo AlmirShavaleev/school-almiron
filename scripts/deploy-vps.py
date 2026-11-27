@@ -3,16 +3,21 @@
 
 import argparse
 import filecmp
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import tarfile
 import tempfile
 import time
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 RELEASE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
+ENTRY_PATH = re.compile(r"/assets/[A-Za-z0-9_.-]+\.(js|css)\Z")
 
 
 def release_id(value):
@@ -126,6 +131,98 @@ def activate(root, release):
         os.replace(next_link, root / "current")
 
 
+class EntryLinks(HTMLParser):
+    def __init__(self, html):
+        super().__init__()
+        self.paths = set()
+        self.has_entry_script = False
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        module = tag == "script" and attrs.get("type") == "module"
+        link = tag == "link" and attrs.get("rel") in ("stylesheet", "modulepreload")
+        if module or link:
+            path = attrs.get("src" if module else "href") or ""
+            if ENTRY_PATH.fullmatch(path):
+                self.paths.add(path)
+                self.has_entry_script |= module and path.endswith(".js")
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def check_origin(url):
+    parts = urlsplit(url)
+    if (parts.username or parts.password or not parts.hostname
+            or parts.path not in ("", "/") or parts.query or parts.fragment
+            or (parts.scheme != "https" and (parts.scheme, parts.hostname) != ("http", "127.0.0.1"))):
+        raise ValueError("Expected an HTTPS origin or a loopback test origin")
+    return url.rstrip("/")
+
+
+def verify_release(origin, release):
+    expected = EntryLinks((release / "index.html").read_text(encoding="utf-8"))
+    if not expected.has_entry_script:
+        raise ValueError(f"No module entry point in {release.name}")
+    opener = build_opener(NoRedirect)
+    cache_buster = f"?deploy_check={release.name}-{time.time_ns()}"
+
+    def fetch(path, types, method="GET"):
+        request = Request(origin + path, headers={"Cache-Control": "no-cache"}, method=method)
+        with opener.open(request, timeout=4) as response:
+            if response.status != 200 or response.headers.get_content_type() not in types:
+                raise ValueError(f"Unexpected HTTP response for {path}: {response.status} {response.headers.get_content_type()}")
+            return response.read(512 * 1024 + 1) if method == "GET" else b""
+
+    version = fetch("/version.json" + cache_buster, {"application/json"})
+    if json.loads(version) != {"build_id": release.name}:
+        raise ValueError(f"Public version differs from release {release.name}")
+    html = fetch("/" + cache_buster, {"text/html"})
+    observed = EntryLinks(html.decode("utf-8"))
+    if len(html) > 512 * 1024 or not observed.has_entry_script or observed.paths != expected.paths:
+        raise ValueError(f"Public entry points differ from release {release.name}")
+    for path in sorted(expected.paths):
+        types = {"text/css"} if path.endswith(".css") else {"application/javascript", "text/javascript"}
+        fetch(path, types, method="HEAD")
+
+
+def verify_with_retry(origin, release):
+    for attempt in range(3):
+        try:
+            verify_release(origin, release)
+            return
+        except (OSError, ValueError):
+            if attempt == 2:
+                raise
+            time.sleep(attempt + 1)
+
+
+def switch_and_verify(root, candidate, previous, origin):
+    current = root / "current"
+    try:
+        activate(root, candidate)
+        verify_with_retry(origin, candidate)
+        if not current.is_symlink() or current.resolve() != candidate:
+            raise RuntimeError("Current changed during verification")
+    except (Exception, KeyboardInterrupt) as failure:
+        if current.is_symlink() and current.resolve() == previous:
+            raise
+        if not current.is_symlink() or current.resolve() != candidate:
+            raise RuntimeError("Current changed; rollback skipped") from failure
+        activate(root, previous)
+        try:
+            verify_with_retry(origin, previous)
+        except (Exception, KeyboardInterrupt) as rollback_failure:
+            raise RuntimeError(
+                f"Restored current to {previous.name}; public rollback check failed: {rollback_failure}. "
+                f"Candidate failure: {failure}"
+            ) from failure
+        raise RuntimeError(f"Restored and verified {previous.name} after {candidate.name} failed: {failure}") from failure
+
+
 def dry_run_cleanup(root, min_age_days):
     if min_age_days < 30:
         raise ValueError("Keep unreferenced assets for at least 30 days")
@@ -157,7 +254,7 @@ def dry_run_cleanup(root, min_age_days):
             "protected_assets": len(protected), "candidates": candidates}
 
 
-def run(root, action, name=None, archive=None):
+def run(root, action, name=None, archive=None, check_url=None):
     import fcntl
 
     root = root.resolve(strict=True)
@@ -182,14 +279,29 @@ def run(root, action, name=None, archive=None):
             return
         if not seeded.is_file():
             raise ValueError("Seed the shared asset store before switching releases")
+        if check_url is not None:
+            origin = check_origin(check_url)
+            if not current.is_symlink():
+                raise ValueError("Checked deploy requires an active release for rollback")
+            previous = current.resolve(strict=True)
+            check_release(previous)
+            publish_assets(previous / "assets", shared)
         if action == "deploy":
             release = install_release(releases, shared, name, archive)
         else:
             release = releases / name
             check_release(release)
             publish_assets(release / "assets", shared)
-        activate(root, release)
+        if check_url is None:
+            activate(root, release)
+        else:
+            switch_and_verify(root, release, previous, origin)
         print(f"Activated {release.name}")
+
+
+def interrupt_deploy(signum, _frame):
+    signal.signal(signum, signal.SIG_IGN)
+    raise KeyboardInterrupt(signal.Signals(signum).name)
 
 
 if __name__ == "__main__":
@@ -200,6 +312,7 @@ if __name__ == "__main__":
     deploy = commands.add_parser("deploy")
     deploy.add_argument("name", type=release_id)
     deploy.add_argument("archive", type=Path)
+    deploy.add_argument("--check-url", required=True, help="Public origin to verify after activation")
     commands.add_parser("rollback").add_argument("name", type=release_id)
     cleanup = commands.add_parser("cleanup-dry-run")
     cleanup.add_argument("--min-age-days", type=int, default=30)
@@ -207,4 +320,8 @@ if __name__ == "__main__":
     if args.action == "cleanup-dry-run":
         print(json.dumps(dry_run_cleanup(args.root, args.min_age_days), ensure_ascii=False, indent=2))
     else:
-        run(args.root, args.action, getattr(args, "name", None), getattr(args, "archive", None))
+        check_url = getattr(args, "check_url", None)
+        if check_url:
+            for interruption in (signal.SIGHUP, signal.SIGTERM):
+                signal.signal(interruption, interrupt_deploy)
+        run(args.root, args.action, getattr(args, "name", None), getattr(args, "archive", None), check_url)

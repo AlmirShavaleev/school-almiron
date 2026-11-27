@@ -226,3 +226,51 @@ test('drafts and attachments stay isolated across auth transitions, expiry and b
   await click(f.page, 'Sign in A')
   await expect(answer(f.page)).toHaveValue('written offline by A')
 })
+
+test('a delayed IndexedDB read keeps submission disabled until the photo is restored in Chromium', async t => {
+  const f = await fixture(t)
+  await f.page.goto(f.base + '/lesson/1')
+  await f.page.locator('input[type=file]').setInputFiles({
+    name: 'solution.png', mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l2UAAAAASUVORK5CYII=', 'base64'),
+  })
+  await expect(f.page.getByRole('button', { name: 'solution.png' })).toBeVisible()
+  await f.page.waitForFunction(() => new Promise((resolve, reject) => {
+    const open = indexedDB.open('almiron-student-drafts', 1)
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      const database = open.result
+      const count = database.transaction('attachments').objectStore('attachments').count()
+      count.onsuccess = () => { database.close(); resolve(count.result === 1) }
+      count.onerror = () => { database.close(); reject(count.error) }
+    }
+  }))
+  await f.page.addInitScript(() => {
+    const original = IDBObjectStore.prototype.get
+    const success = Object.getOwnPropertyDescriptor(IDBRequest.prototype, 'onsuccess')
+    IDBObjectStore.prototype.get = function (...args) {
+      const request = original.apply(this, args)
+      if (this.name === 'attachments') {
+        Object.defineProperty(request, 'onsuccess', {
+          set(listener) {
+            success.set.call(request, event => {
+              window.finishFixturePhotoRestore = () => listener.call(request, event)
+            })
+          },
+        })
+      }
+      return request
+    }
+  })
+  await f.page.reload()
+  await f.page.waitForFunction(() => typeof window.finishFixturePhotoRestore === 'function')
+  const submit = f.page.getByRole('button', { name: 'Submit fixture' })
+  await expect(submit).toBeDisabled()
+  await submit.evaluate(button => button.click())
+  await expect(f.page.getByTestId('submitted-files')).toHaveCount(0)
+  await f.page.evaluate(() => window.finishFixturePhotoRestore())
+  await expect(f.page.getByRole('button', { name: 'solution.png' })).toBeVisible()
+  await expect(submit).toBeEnabled()
+  await submit.click()
+  await expect(f.page.getByTestId('submitted-files')).toHaveText('solution.png')
+})

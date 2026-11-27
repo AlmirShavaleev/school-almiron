@@ -11,6 +11,7 @@ import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
 import { useConfirmedStudentId } from '@/lib/draftIdentity'
 import { clearStudentDraft, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey, useDraftFiles } from '@/lib/studentDrafts'
+import { DraftFilesStatus } from '@/components/student/DraftFilesStatus'
 
 const TABS: HomeworkV2Category[] = ['new', 'to_do', 'under_review', 'returned_for_revision', 'checked']
 
@@ -116,9 +117,11 @@ function SubmitAttemptModal({ row, owner, epoch, onClose, onSubmitted }: { row: 
   const scope = [owner, row.course_id, 'course-assignment', row.assignment_id] as const
   const key = studentDraftKey('homework-text', ...scope)
   const [answerText, setAnswerText] = useState(() => readStudentDraft(key, ''))
-  const [files, setFiles] = useDraftFiles(studentDraftKey('homework-files', ...scope))
+  const [files, setFiles, restoration] = useDraftFiles(studentDraftKey('homework-files', ...scope))
+  const filesReady = restoration.phase === 'ready'
 
   async function handleSubmit() {
+    if (!filesReady || useAuthStore.getState().identityEpoch !== epoch) return
     const releaseReload = holdDraftReload()
     try {
       await submitAttempt(row.assignment_id, answerText, files)
@@ -151,7 +154,7 @@ function SubmitAttemptModal({ row, owner, epoch, onClose, onSubmitted }: { row: 
             <label className="block text-sm font-medium text-gray-700 mb-1">Файлы</label>
             <label className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-primary-300 hover:text-primary-500 cursor-pointer transition-colors">
               <Paperclip size={16} />Прикрепить файлы
-              <input type="file" multiple disabled={submitting} className="hidden" onChange={e => setFiles(Array.from(e.target.files || []))} />
+              <input type="file" multiple disabled={submitting || !filesReady} className="hidden" onChange={e => setFiles(Array.from(e.target.files || []))} />
             </label>
             {files.length > 0 && (
               <ul className="mt-2 space-y-1">
@@ -161,10 +164,11 @@ function SubmitAttemptModal({ row, owner, epoch, onClose, onSubmitted }: { row: 
               </ul>
             )}
           </div>
+          <DraftFilesStatus {...restoration} />
           {error && <p className="text-sm text-red-500 bg-red-50 p-3 rounded-lg">{error}</p>}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Отмена</Button>
-            <Button type="button" loading={submitting} onClick={handleSubmit} className="flex-1">Отправить</Button>
+            <Button type="button" loading={submitting} disabled={!filesReady} onClick={handleSubmit} className="flex-1">Отправить</Button>
           </div>
         </div>
       </div>

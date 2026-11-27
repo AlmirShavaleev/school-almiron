@@ -50,7 +50,7 @@ jobs:
 
       - name: Verify deployment and recovery scenarios
         run: |
-          npm test -- src/lib/__tests__/perfAssetIngest.test.ts src/lib/__tests__/perfRum.test.ts src/lib/__tests__/releaseRecovery.test.ts src/hooks/__tests__/useVariantAttempt.submit.test.ts
+          npm test -- src/lib/__tests__/perfAssetIngest.test.ts src/lib/__tests__/perfRum.test.ts src/lib/__tests__/releaseRecovery.test.ts src/hooks/__tests__/useVariantAttempt.submit.test.ts src/pages/student/__tests__/preflight-account-switch.test.tsx
           npx playwright install --with-deps chromium
           node --test scripts/test-deploy-browser.mjs
 
@@ -67,7 +67,7 @@ jobs:
           actual="$(ssh-keygen -lf "$RUNNER_TEMP/almiron-ssh/known_hosts" -E sha256 | awk '{print $2}')"
           test "$actual" = 'SHA256:xDAxPUKVD20TWffiRqL/f5Y5OoHhjKTiF7OvcCZkC00'
 
-      - name: Publish assets and activate release
+      - name: Publish assets, activate, and verify or roll back
         run: |
           set -euo pipefail
           tar -czf site.tar.gz -C dist .
@@ -77,14 +77,4 @@ jobs:
           [[ "$remote" =~ ^/tmp/almiron-release\.[a-zA-Z0-9]+$ ]]
           trap 'ssh "${options[@]}" "$server" "rm -f -- $remote/site.tar.gz $remote/deploy-vps.py; rmdir -- $remote"' EXIT
           scp "${options[@]}" site.tar.gz scripts/deploy-vps.py "$server:$remote/"
-          ssh "${options[@]}" "$server" "python3 $remote/deploy-vps.py deploy $ALMIRON_BUILD_ID $remote/site.tar.gz"
-
-      - name: Check the active production build and entry point
-        run: |
-          set -euo pipefail
-          base=https://www.almiron.ru
-          curl --fail --silent --show-error --retry 3 "$base/version.json" |
-            node -e 'const version = JSON.parse(require("fs").readFileSync(0)); if (version.build_id !== process.env.ALMIRON_BUILD_ID) process.exit(1)'
-          entry="$(grep -oE 'src="/assets/[^"]+\.js"' dist/index.html | head -n 1 | cut -d '"' -f 2)"
-          test -n "$entry"
-          curl --fail --silent --show-error --head --retry 3 "$base$entry"
+          ssh "${options[@]}" "$server" "python3 $remote/deploy-vps.py deploy $ALMIRON_BUILD_ID $remote/site.tar.gz --check-url https://www.almiron.ru"

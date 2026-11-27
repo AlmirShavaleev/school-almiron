@@ -8,6 +8,7 @@ import { useMockExamLesson, useMockExamPing, type PhotoUploadProgress } from '@/
 import { ConditionViewer } from '@/components/mockExams/ConditionViewer'
 import { WorkFileThumb } from '@/components/mockExams/WorkFileThumb'
 import { MockSubmitDialog } from '@/components/student/MockSubmitDialog'
+import { DraftFilesStatus } from '@/components/student/DraftFilesStatus'
 import { isPdfFile } from '@/lib/mockExamVariants'
 import { HOMEWORK_FILE_ACCEPT, type RejectedHomeworkFile } from '@/lib/topicHomework'
 import { plural } from '@/lib/plural'
@@ -48,6 +49,8 @@ export function MockExamLessonPage() {
   const owner = useConfirmedStudentId()
   const draftScope = [owner, groupId ?? 'standalone', state?.id, 'mock-exam'] as const
   const draftKey = studentDraftKey('mock-answers', ...draftScope)
+  const [pendingPhotos, keepPendingPhotos, restoration] = useDraftFiles(studentDraftKey('mock-photos', ...draftScope))
+  const filesReady = restoration.phase === 'ready'
   const saving = useRef(new Map<string, { id: symbol; value: string; promise: ReturnType<typeof saveAnswer> }>())
 
   async function persistAnswer(task: number, value: string) {
@@ -130,7 +133,8 @@ export function MockExamLessonPage() {
       </header>
 
       {status === 'upcoming' && <Upcoming state={state} now={now} />}
-      {status === 'open' && <TimerPanel state={state} now={now} variantLabel={variantLabel} onSubmit={() => setAsk(true)} />}
+      {status === 'open' && <TimerPanel state={state} now={now} variantLabel={variantLabel} submitDisabled={!filesReady} onSubmit={() => setAsk(true)} />}
+      {writing && <DraftFilesStatus {...restoration} />}
       {status === 'open' && <WorkModeNotice />}
       {(status === 'submitted' || status === 'time_up') && <ClosedNote state={state} status={status} />}
       {(status === 'checking' || status === 'missed') && <CheckingNote status={status} />}
@@ -144,7 +148,9 @@ export function MockExamLessonPage() {
           photos={(
             <PhotosPanel
               state={state}
-              draftKey={studentDraftKey('mock-photos', ...draftScope)}
+              pending={pendingPhotos}
+              keepPending={keepPendingPhotos}
+              filesReady={filesReady}
               editable={status === 'open' || status === 'submitted' || status === 'time_up'}
               onUpload={uploadPhotos}
               onRemove={removePhoto}
@@ -156,13 +162,14 @@ export function MockExamLessonPage() {
       )}
 
       {status === 'open' && (
-        <Button onClick={() => setAsk(true)} className="min-h-12 w-full lg:hidden" data-testid="mock-lesson-submit"><Send size={15} />Сдать работу</Button>
+        <Button disabled={!filesReady} onClick={() => setAsk(true)} className="min-h-12 w-full lg:hidden" data-testid="mock-lesson-submit"><Send size={15} />Сдать работу</Button>
       )}
-      {status === 'open' && ask && (
+      {status === 'open' && ask && filesReady && (
         <MockSubmitDialog
           open
           onClose={() => setAsk(false)}
           onConfirm={async () => {
+            if (!filesReady) return { error: 'Дождитесь восстановления вложений' }
             const releaseReload = holdDraftReload()
             const assertAccount = captureAuthOperation()
             try {
@@ -309,7 +316,7 @@ function minutesBetween(a: string | null, b: string | null): number {
  * крупно — сколько осталось, рядом — что заполнено; на ноутбуке здесь же
  * «Сдать работу» (на телефоне кнопка — под заданиями и бланком).
  */
-function TimerPanel({ state, now, variantLabel, onSubmit }: { state: MockLessonState; now: number; variantLabel: string | null; onSubmit: () => void }) {
+function TimerPanel({ state, now, variantLabel, submitDisabled, onSubmit }: { state: MockLessonState; now: number; variantLabel: string | null; submitDisabled: boolean; onSubmit: () => void }) {
   const starts = new Date(state.starts_at ?? 0).getTime()
   const ends = new Date(state.ends_at ?? 0).getTime()
   const left = ends - now
@@ -328,7 +335,7 @@ function TimerPanel({ state, now, variantLabel, onSubmit }: { state: MockLessonS
           <span className="text-right text-[13px] leading-snug text-graphite-500" data-testid="mock-lesson-progress">
             бланк {filled} из {state.part1_last}<br />фото {state.photos.length}
           </span>
-          <Button onClick={onSubmit} className="hidden lg:inline-flex" data-testid="mock-lesson-submit-top"><Send size={15} />Сдать работу</Button>
+          <Button disabled={submitDisabled} onClick={onSubmit} className="hidden lg:inline-flex" data-testid="mock-lesson-submit-top"><Send size={15} />Сдать работу</Button>
         </div>
       </div>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-graphite-100" aria-hidden>
@@ -460,9 +467,11 @@ function AnswerSheet({ state, draftKey, editable, onSave, onClosed }: {
   )
 }
 
-function PhotosPanel({ state, draftKey, editable, onUpload, onRemove, onClosed, onBroken }: {
+function PhotosPanel({ state, pending, keepPending, filesReady, editable, onUpload, onRemove, onClosed, onBroken }: {
   state: MockLessonState
-  draftKey: string | null
+  pending: File[]
+  keepPending: (files: File[]) => void
+  filesReady: boolean
   editable: boolean
   onUpload: (files: File[], onProgress?: (p: PhotoUploadProgress[]) => void, onPending?: (files: File[]) => void) => Promise<{ rejected: RejectedHomeworkFile[]; error: string | null }>
   onRemove: (photo: MockLessonPhoto) => Promise<{ error: string | null }>
@@ -474,7 +483,6 @@ function PhotosPanel({ state, draftKey, editable, onUpload, onRemove, onClosed, 
   const [err, setErr] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
   const uploading = useRef(false)
-  const [pending, keepPending] = useDraftFiles(draftKey)
   // Камера — на любом сенсорном экране (iPad, телефон боком), как в ДЗ темы; без пальца — только на узком экране.
   const coarse = useCoarsePointer()
   const busy = progress.length > 0
@@ -482,7 +490,7 @@ function PhotosPanel({ state, draftKey, editable, onUpload, onRemove, onClosed, 
   const last = state.task_count
 
   async function pick(files: File[], retry = false) {
-    if (!files.length || uploading.current) return
+    if (!filesReady || !files.length || uploading.current) return
     if (pending.length && !retry) {
       setErr('Сначала повторите загрузку сохранённых файлов или уберите их.')
       return
@@ -529,12 +537,12 @@ function PhotosPanel({ state, draftKey, editable, onUpload, onRemove, onClosed, 
               <span>Перетащите фото сюда или</span>
               <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-graphite-800 hover:bg-primary-50">
                 <Upload size={14} />выберите файлы
-                <input type="file" multiple accept={HOMEWORK_FILE_ACCEPT} className="hidden" data-testid="mock-lesson-file-input"
+                <input type="file" multiple accept={HOMEWORK_FILE_ACCEPT} disabled={!filesReady} className="hidden" data-testid="mock-lesson-file-input"
                   onChange={async e => { const f = Array.from(e.target.files ?? []); e.target.value = ''; await pick(f) }} />
               </label>
               <label data-testid="mock-lesson-camera" className={cn('inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-graphite-800 hover:bg-primary-50', !coarse && 'sm:hidden')}>
                 <Camera size={14} />снять
-                <input type="file" accept="image/*" capture="environment" className="hidden"
+                <input type="file" accept="image/*" capture="environment" disabled={!filesReady} className="hidden"
                   onChange={async e => { const f = Array.from(e.target.files ?? []); e.target.value = ''; await pick(f) }} />
               </label>
             </div>
