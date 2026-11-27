@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { describeHomeworkV2Error, validateAttemptFilesClientSide } from '@/lib/homeworkV2Errors'
+import { captureAuthOperation } from '@/lib/draftIdentity'
 
 /** Start (or resume) a draft attempt, upload files under the server-required prefix, then
  * finalize. The upload path prefix (own uid + attempt id) is enforced by both the storage
@@ -12,6 +13,7 @@ export function useHomeworkAttemptV2() {
   const [error, setError] = useState<string | null>(null)
 
   async function submitAttempt(assignmentId: string, answerText: string, files: File[]) {
+    const assertAccount = captureAuthOperation()
     setSubmitting(true)
     setError(null)
     try {
@@ -22,20 +24,24 @@ export function useHomeworkAttemptV2() {
         p_assignment_id: assignmentId,
       })
       if (startErr) throw startErr
+      assertAccount()
       const attemptId = (startData as { attempt_id: string }).attempt_id
 
       const { data: userData } = await supabase.auth.getUser()
+      assertAccount()
       const uid = userData.user?.id
       if (!uid) throw new Error('Не авторизован')
 
       const uploaded: { storage_path: string; file_name: string; mime_type: string; size: number }[] = []
       for (const file of files) {
+        assertAccount()
         const path = `${uid}/${attemptId}/${Date.now()}-${file.name}`
         const { error: upErr } = await supabase.storage.from('homework-attempts').upload(path, file, { contentType: file.type })
         if (upErr) throw upErr
         uploaded.push({ storage_path: path, file_name: file.name, mime_type: file.type, size: file.size })
       }
 
+      assertAccount()
       const { data: finalizeData, error: finalizeErr } = await supabase.rpc('finalize_homework_attempt', {
         p_attempt_id: attemptId,
         p_answer_text: answerText,

@@ -39,16 +39,17 @@ describe('LoadingGate', () => {
     expect(screen.getByText(/дольше обычного/)).toBeInTheDocument()
   })
 
-  it('по истечении предела показывает ошибку с кнопкой «Обновить»', () => {
+  it('по истечении предела показывает ошибку с кнопкой повторной загрузки', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
     render(<LoadingGate label="профиль" />)
 
     advance(HARD_LIMIT_MS)
+    await act(async () => {})
 
     expect(screen.getByTestId('loading-failed')).toBeInTheDocument()
     expect(screen.getByText('Не удалось загрузить')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Обновить/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Повторить загрузку/ })).toBeInTheDocument()
     expect(screen.queryByTestId('loading-gate')).not.toBeInTheDocument()
   })
 
@@ -61,7 +62,7 @@ describe('LoadingGate', () => {
     expect(screen.queryByTestId('loading-failed')).not.toBeInTheDocument()
   })
 
-  it('ГЛАВНОЕ: промис, который никогда не разрешается, приводит к ошибке, а не к вечному спиннеру', () => {
+  it('промис, который никогда не разрешается, приводит к ошибке загрузки', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -78,9 +79,10 @@ describe('LoadingGate', () => {
     expect(screen.getByTestId('loading-gate')).toBeInTheDocument()
 
     advance(HARD_LIMIT_MS)
+    await act(async () => {})
 
     expect(screen.getByTestId('loading-failed')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Обновить/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Повторить загрузку/ })).toBeInTheDocument()
   })
 
   it('таймеры снимаются при размонтировании — успевшая загрузка не жалуется в консоль', () => {

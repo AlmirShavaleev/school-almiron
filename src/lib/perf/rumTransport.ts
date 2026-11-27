@@ -22,8 +22,8 @@ export const rumTransport: RumTransport = {
   signedIn: () => !!token,
   send: (events: PerfEvent[]) => Promise.resolve(supabase.rpc('perf_ingest' as never, { p_events: events } as never)),
   sendOnExit: (events: PerfEvent[]) => {
-    if (!token) return
-    void fetch(`${SUPABASE_URL}/rest/v1/rpc/perf_ingest`, {
+    if (!token) return Promise.resolve(false)
+    return fetch(`${SUPABASE_URL}/rest/v1/rpc/perf_ingest`, {
       method: 'POST',
       keepalive: true,
       headers: {
@@ -32,6 +32,6 @@ export const rumTransport: RumTransport = {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ p_events: events }),
-    }).catch(() => {})
+    }).then(response => response.ok, () => false)
   },
 }

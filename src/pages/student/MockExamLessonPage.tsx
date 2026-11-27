@@ -24,6 +24,8 @@ import { fileNameFromStoragePath } from '@/lib/storage'
 import { useAwayTracker } from '@/hooks/useWorkActivity'
 import { refreshWorkMode, useWorkModeStore } from '@/store/workModeStore'
 import { WorkModeNotice } from '@/components/layout/WorkMode'
+import { captureAuthOperation, useConfirmedStudentId } from '@/lib/draftIdentity'
+import { acknowledgeDraftAnswer, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey, useDraftFiles } from '@/lib/studentDrafts'
 
 /**
  * §221. Пробник в курсе глазами ученика — по макету `МАКЕТ-ОНЛАЙН-ПРОБНИКА.html`
@@ -43,6 +45,35 @@ export function MockExamLessonPage() {
   // §229. Окно «Сдать работу» и файлы, которые не открылись (их назовёт окно).
   const [ask, setAsk] = useState(false)
   const [broken, setBroken] = useState<Record<string, boolean>>({})
+  const owner = useConfirmedStudentId()
+  const draftScope = [owner, groupId ?? 'standalone', state?.id, 'mock-exam'] as const
+  const draftKey = studentDraftKey('mock-answers', ...draftScope)
+  const saving = useRef(new Map<string, { id: symbol; value: string; promise: ReturnType<typeof saveAnswer> }>())
+
+  async function persistAnswer(task: number, value: string) {
+    const field = String(task - 1)
+    const requestKey = `${draftKey}:${field}`
+    const active = saving.current.get(requestKey)
+    if (active?.value === value) return active.promise
+    const id = Symbol()
+    const assertAccount = captureAuthOperation()
+    const promise = (async () => {
+      if (active) await active.promise.catch(() => {})
+      try {
+        assertAccount()
+        const result = await saveAnswer(task, value)
+        assertAccount()
+        if (!result.error && saving.current.get(requestKey)?.id === id) acknowledgeDraftAnswer(draftKey, field, value)
+        return result
+      } catch (error) {
+        return { savedAt: null, error: error instanceof Error ? error.message : 'Не удалось сохранить ответ' }
+      }
+    })()
+    const request = { id, value, promise }
+    saving.current.set(requestKey, request)
+    try { return await promise }
+    finally { if (saving.current.get(requestKey) === request) saving.current.delete(requestKey) }
+  }
 
   const status: MockLessonStatus | null = state
     ? lessonStatus({ ...state, has_work: state.submitted_at != null || state.answers.some(a => a) || state.photos.length > 0 }, now)
@@ -109,10 +140,11 @@ export function MockExamLessonPage() {
         <WorkArea
           state={state}
           variantLabel={variantLabel}
-          sheet={<AnswerSheet state={state} editable={status === 'open'} onSave={saveAnswer} onClosed={reload} />}
+          sheet={<AnswerSheet key={state.id} state={state} draftKey={draftKey} editable={status === 'open'} onSave={persistAnswer} onClosed={reload} />}
           photos={(
             <PhotosPanel
               state={state}
+              draftKey={studentDraftKey('mock-photos', ...draftScope)}
               editable={status === 'open' || status === 'submitted' || status === 'time_up'}
               onUpload={uploadPhotos}
               onRemove={removePhoto}
@@ -131,11 +163,23 @@ export function MockExamLessonPage() {
           open
           onClose={() => setAsk(false)}
           onConfirm={async () => {
-            const r = await submit()
-            if (r.error) { reload(); return r }
-            setAsk(false)
-            refreshWorkMode()
-            return r
+            const releaseReload = holdDraftReload()
+            const assertAccount = captureAuthOperation()
+            try {
+              for (const [index, answer] of Object.entries(readStudentDraft<Record<string, string>>(draftKey, {}))) {
+                const saved = await persistAnswer(Number(index) + 1, answer)
+                if (saved.error) return { error: saved.error }
+              }
+              assertAccount()
+              const r = await submit()
+              assertAccount()
+              if (r.error) { reload(); return r }
+              setAsk(false)
+              refreshWorkMode()
+              return r
+            } catch (error) {
+              return { error: error instanceof Error ? error.message : 'Не удалось отправить работу' }
+            } finally { releaseReload() }
           }}
           leftMs={new Date(state.ends_at ?? 0).getTime() - now}
           photosUntil={state.photos_until}
@@ -326,22 +370,24 @@ function CheckingNote({ status }: { status: 'checking' | 'missed' }) {
 }
 
 /** Бланк первой части: сохраняется сам на каждый ввод, по одному полю. */
-function AnswerSheet({ state, editable, onSave, onClosed }: {
+function AnswerSheet({ state, draftKey, editable, onSave, onClosed }: {
   state: MockLessonState
+  draftKey: string | null
   editable: boolean
   onSave: (task: number, value: string) => Promise<{ savedAt: string | null; error: string | null }>
   onClosed: () => void
 }) {
   const count = state.part1_last
-  const [values, setValues] = useState<string[]>(() => Array.from({ length: count }, (_, i) => state.answers[i] ?? ''))
+  const pendingValue = useRef<Record<number, string>>(editable ? readStudentDraft(draftKey, {}) : {})
+  const [values, setValues] = useState<string[]>(() => Array.from(
+    { length: count }, (_, i) => pendingValue.current[i] ?? state.answers[i] ?? '',
+  ))
   const [saved, setSaved] = useState<{ kind: 'idle' | 'saving' | 'ok' | 'error'; text: string }>(
     state.updated_at && state.answers.some(a => a) ? { kind: 'ok', text: `Сохранено в ${mskTime(state.updated_at)}` } : { kind: 'idle', text: '' })
   const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
   const inputs = useRef<Record<number, HTMLInputElement | null>>({})
 
   useEffect(() => () => { Object.values(timers.current).forEach(clearTimeout) }, [])
-
-  const pendingValue = useRef<Record<number, string>>({})
 
   async function flush(i: number) {
     clearTimeout(timers.current[i])
@@ -364,6 +410,7 @@ function AnswerSheet({ state, editable, onSave, onClosed }: {
     setValues(prev => { const n = prev.slice(); n[i] = v; return n })
     setSaved({ kind: 'saving', text: 'Сохраняю…' })
     pendingValue.current[i] = v
+    saveStudentDraft(draftKey, { ...readStudentDraft(draftKey, {}), [i]: v })
     clearTimeout(timers.current[i])
     timers.current[i] = setTimeout(() => { void flush(i) }, 600)
   }
@@ -413,10 +460,11 @@ function AnswerSheet({ state, editable, onSave, onClosed }: {
   )
 }
 
-function PhotosPanel({ state, editable, onUpload, onRemove, onClosed, onBroken }: {
+function PhotosPanel({ state, draftKey, editable, onUpload, onRemove, onClosed, onBroken }: {
   state: MockLessonState
+  draftKey: string | null
   editable: boolean
-  onUpload: (files: File[], onProgress?: (p: PhotoUploadProgress[]) => void) => Promise<{ rejected: RejectedHomeworkFile[]; error: string | null }>
+  onUpload: (files: File[], onProgress?: (p: PhotoUploadProgress[]) => void, onPending?: (files: File[]) => void) => Promise<{ rejected: RejectedHomeworkFile[]; error: string | null }>
   onRemove: (photo: MockLessonPhoto) => Promise<{ error: string | null }>
   onClosed: () => void
   onBroken?: (photoId: string, broken: boolean) => void
@@ -425,18 +473,35 @@ function PhotosPanel({ state, editable, onUpload, onRemove, onClosed, onBroken }
   const [rejected, setRejected] = useState<RejectedHomeworkFile[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [drag, setDrag] = useState(false)
+  const uploading = useRef(false)
+  const [pending, keepPending] = useDraftFiles(draftKey)
   // Камера — на любом сенсорном экране (iPad, телефон боком), как в ДЗ темы; без пальца — только на узком экране.
   const coarse = useCoarsePointer()
   const busy = progress.length > 0
   const first = state.part1_last + 1
   const last = state.task_count
 
-  async function pick(files: File[]) {
-    if (!files.length) return
+  async function pick(files: File[], retry = false) {
+    if (!files.length || uploading.current) return
+    if (pending.length && !retry) {
+      setErr('Сначала повторите загрузку сохранённых файлов или уберите их.')
+      return
+    }
+    const releaseReload = holdDraftReload()
+    uploading.current = true
+    keepPending(files)
     setErr(null)
-    const r = await onUpload(files, setProgress)
-    setRejected(r.rejected)
-    if (r.error) { setErr(r.error); onClosed() }
+    try {
+      const r = await onUpload(files, setProgress, keepPending)
+      setRejected(r.rejected)
+      if (r.error) { setErr(r.error); onClosed() }
+      else keepPending([])
+    } catch {
+      setErr('Не удалось загрузить файлы. Они остались в черновике.')
+    } finally {
+      uploading.current = false
+      releaseReload()
+    }
   }
 
   return (
@@ -477,6 +542,13 @@ function PhotosPanel({ state, editable, onUpload, onRemove, onClosed, onBroken }
         </div>
       )}
       {!editable && <p className="inline-flex items-center gap-1 text-[13px] text-graphite-500"><Lock size={13} />Загрузка фото закрыта в {mskTime(state.photos_until)}.</p>}
+      {editable && !busy && pending.length > 0 && !uploading.current && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          <span>Файлов в черновике: {pending.length}</span>
+          <button type="button" className="underline" onClick={() => void pick(pending, true)}>Повторить загрузку</button>
+          <button type="button" className="underline" onClick={() => keepPending([])}>Убрать файлы из черновика</button>
+        </div>
+      )}
       {rejected.length > 0 && (
         <ul className="mt-3 space-y-1 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="mock-lesson-rejected">
           {rejected.map((r, i) => <li key={i}><b>{r.file.name}</b> — {r.problem}</li>)}

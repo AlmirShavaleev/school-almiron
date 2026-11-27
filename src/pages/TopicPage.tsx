@@ -685,7 +685,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         />
       ) : key === 'homework' && autocheckHomework && (!hasPhotoSubmission || !!repeatTasks) ? (
         autocheck.state ? (
-          <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
+          <TopicAutocheckStudent courseId={topic.course_id} state={autocheck.state} onCheck={autocheck.check} preview={preview} />
         ) : (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-400">
             {autocheck.loading ? <><Loader2 size={16} className="animate-spin" />Загрузка задач…</> : autocheck.error ?? 'Задачи сейчас недоступны'}
@@ -694,11 +694,12 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
       ) : key === 'homework' ? (
         <div className="space-y-4">
           {autocheckHomework && autocheck.state && autocheckTotal > 0 && (
-            <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
+            <TopicAutocheckStudent courseId={topic.course_id} state={autocheck.state} onCheck={autocheck.check} preview={preview} />
           )}
           <TopicHomeworkStudent
             key={topic.id + (repeatHomework ?? '')}
             topicId={topic.id}
+            courseId={topic.course_id}
             workPlanRepeatItemId={repeatHomework}
             worksheetMaterials={inlinePhotoWorksheet ? studentMaterials.filter(material => material.section === 'worksheet_homework') : undefined}
             onSubmitted={repeatHomework ? undefined : homeworkState.markSubmitted}
@@ -727,7 +728,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
               {hasTopicTasks && (
                 <h3 className="mb-2 text-sm font-semibold text-gray-700">Тест по теме</h3>
               )}
-              <TopicTestStudent topicId={topic.id} />
+              <TopicTestStudent topicId={topic.id} courseId={topic.course_id} />
             </section>
           )}
         </div>

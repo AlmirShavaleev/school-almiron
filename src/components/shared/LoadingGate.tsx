@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
-import { noteReload } from '@/lib/perf/rum'
+import { ReloadRecovery } from './ReloadRecovery'
 
 /**
  * Экран ожидания с пределом по времени.
@@ -76,13 +75,7 @@ export function LoadingGate({ label, fullScreen = false, message }: LoadingGateP
           <p className="mt-1.5 text-sm text-slate-500">
             {message ?? 'Похоже, пропала связь или страница зависла на загрузке. Обновите — обычно этого хватает.'}
           </p>
-          <button
-            type="button"
-            onClick={() => { noteReload('button:loading'); window.location.reload() }}
-            className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
-          >
-            <RefreshCw size={15} />Обновить
-          </button>
+          <ReloadRecovery reason="loading" />
         </div>
       </div>
     )

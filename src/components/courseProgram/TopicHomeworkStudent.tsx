@@ -21,6 +21,8 @@ import { useAttemptNotes } from '@/hooks/useAttemptNotes'
 import { plural } from '@/lib/plural'
 import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
 import { useAuthStore } from '@/store/authStore'
+import { captureAuthOperation, useConfirmedStudentId } from '@/lib/draftIdentity'
+import { clearStudentDraft, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey, useDraftFiles } from '@/lib/studentDrafts'
 import {
   ATTEMPT_STATUS_LABEL,
   ATTEMPT_STATUS_TONE,
@@ -93,9 +95,10 @@ function worksheetNumber(title: string | null): string | undefined {
  * «Сдать заново» после принятия — это UX, а запрет держит триггер в БД.
  */
 export function TopicHomeworkStudent({
-  topicId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [], workPlanRepeatItemId,
+  topicId, courseId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [], workPlanRepeatItemId,
 }: {
   topicId: string
+  courseId?: string | null
   className?: string
   workPlanRepeatItemId?: string | null
   worksheetMaterials?: readonly TopicMaterial[]
@@ -165,6 +168,10 @@ export function TopicHomeworkStudent({
   )
   /** §206. Своё имя — для шапки скачиваемого PDF и для имени файла. */
   const myName = useAuthStore(s => s.profile?.full_name) || 'Ученик'
+  const userId = useConfirmedStudentId()
+  const scope = [preview ? null : userId, courseId, topicId, homework?.id, workPlanRepeatItemId ?? 'standard'] as const
+  const uploadTaskKey = studentDraftKey('topic-homework-task', ...scope)
+  const [pendingUpload, keepUpload] = useDraftFiles(studentDraftKey('topic-homework-files', ...scope))
 
   useEffect(() => {
     const ids = attemptIdsKey ? attemptIdsKey.split(',') : []
@@ -186,6 +193,7 @@ export function TopicHomeworkStudent({
   }, [attemptIdsKey])
 
   async function run(fn: () => Promise<unknown>) {
+    const releaseReload = holdDraftReload()
     setBusy(true)
     setLocalError(null)
     try {
@@ -193,13 +201,20 @@ export function TopicHomeworkStudent({
     } catch (e: any) {
       setLocalError(e?.message ?? 'Не удалось выполнить действие')
     } finally {
+      releaseReload()
       setBusy(false)
     }
   }
 
   const uploadPicked = useCallback(
-    async (attemptId: string | null, incoming: File[], { fromPaste = false, photoTaskNumber }: { fromPaste?: boolean; photoTaskNumber?: string } = {}) => {
+    async (attemptId: string | null, incoming: File[], { fromPaste = false, photoTaskNumber, retry = false }: {
+      fromPaste?: boolean; photoTaskNumber?: string; retry?: boolean
+    } = {}) => {
       if (incoming.length === 0 || photosUploading.current) return
+      if (pendingUpload.length && !retry) {
+        setLocalError('Сначала повторите загрузку сохранённых файлов или уберите их.')
+        return
+      }
       // Гейт по формату — ДО сжатия и до Storage. Отклонённый файл не
       // «выбран»: он не попадает ни в прогресс, ни в uploadAttemptFiles;
       // остальные из той же пачки идут как обычно.
@@ -210,25 +225,35 @@ export function TopicHomeworkStudent({
       setLocalError(null)
       if (picked.length === 0) return
 
+      const releaseReload = holdDraftReload()
+      const assertAccount = captureAuthOperation()
+      saveStudentDraft(uploadTaskKey, photoTaskNumber ?? '')
+      keepUpload(picked)
       photosUploading.current = true
       setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
       try {
         const id = attemptId ?? await startAttempt(false)
+        assertAccount()
         if (!id) return
         const onProgress = (index: number, percent: number) => {
           setUploads(prev => prev.map((u, i) => (i === index ? { ...u, percent } : u)))
+          if (percent === 100) keepUpload(picked.slice(index + 1))
         }
         if (photoTaskNumber) await uploadAttemptFiles(id, picked, onProgress, photoTaskNumber)
         else await uploadAttemptFiles(id, picked, onProgress)
+        assertAccount()
+        keepUpload([])
+        clearStudentDraft(uploadTaskKey)
       } catch (err: any) {
         setLocalError(err?.message ?? 'Не удалось загрузить файлы')
       } finally {
+        releaseReload()
         photosUploading.current = false
         setUploads([])
         if (!attemptId) reload()
       }
     },
-    [reload, startAttempt, uploadAttemptFiles],
+    [reload, startAttempt, uploadAttemptFiles, keepUpload, pendingUpload.length, uploadTaskKey],
   )
 
   const draftAttempt = attempts.find(a => a.status === 'draft') ?? null
@@ -289,6 +314,18 @@ export function TopicHomeworkStudent({
       {photoMode && (localError || error) && (
         <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{localError || error}</p>
       )}
+      {!preview && !uploadingFiles && pendingUpload.length > 0 && (
+        <div className="my-2 flex flex-wrap items-center gap-2 text-sm">
+          <span>Файлов в черновике: {pendingUpload.length}</span>
+          <button type="button" className="underline" onClick={() => void uploadPicked(draftAttemptId, pendingUpload, {
+            retry: true, photoTaskNumber: readStudentDraft(uploadTaskKey, '') || undefined,
+          })}>Повторить загрузку</button>
+          <button type="button" className="underline" onClick={() => {
+            keepUpload([])
+            clearStudentDraft(uploadTaskKey)
+          }}>Убрать файлы из черновика</button>
+        </div>
+      )}
       {rejected.length > 0 && (
         <p className="text-sm text-amber-800" role="alert">
           {Array.from(new Set(rejected.map(file => file.problem))).join(' ')}
@@ -299,6 +336,10 @@ export function TopicHomeworkStudent({
 
   function submitPhotos(allowMissing: boolean) {
     setConfirmPartial(false)
+    if (pendingUpload.length) {
+      setLocalError('Сначала завершите загрузку файлов из черновика.')
+      return
+    }
     void run(async () => {
       const id = draftAttemptId ?? await startAttempt(false)
       if (!id) return
@@ -912,7 +953,7 @@ export function TopicHomeworkStudent({
               className="w-full"
               onClick={() => run(() => submitAttempt(active.id))}
               loading={busy}
-              disabled={draftFiles.length === 0 || uploadingFiles}
+              disabled={draftFiles.length === 0 || uploadingFiles || pendingUpload.length > 0}
               title={draftFiles.length === 0 ? 'Сначала прикрепите работу' : undefined}
             >
               Отправить на проверку

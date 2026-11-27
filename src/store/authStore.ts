@@ -2,11 +2,12 @@ import { create } from 'zustand'
 import type { User, Session } from '@supabase/supabase-js'
 import type { Profile, UserRole } from '@/types'
 
-interface AuthState {
+export interface AuthState {
   user: User | null
   session: Session | null
   profile: Profile | null
   loading: boolean
+  identityEpoch: number
   setUser: (user: User | null) => void
   setSession: (session: Session | null) => void
   setProfile: (profile: Profile | null) => void
@@ -22,12 +23,18 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   session: null,
   profile: null,
   loading: true,
+  identityEpoch: 0,
   get role() {
     return get().profile?.role ?? null
   },
-  setUser: (user) => set({ user }),
+  setUser: (user) => set(state => state.user?.id === user?.id
+    ? { user }
+    : { user, profile: null, loading: !!user, identityEpoch: state.identityEpoch + 1 }),
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile }),
   setLoading: (loading) => set({ loading }),
-  reset: () => set({ user: null, session: null, profile: null, loading: false }),
+  reset: () => set(state => ({
+    user: null, session: null, profile: null, loading: false,
+    identityEpoch: state.identityEpoch + (state.user || state.profile ? 1 : 0),
+  })),
 }))

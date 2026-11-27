@@ -1,67 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { RumTracker } from '@/components/perf/RumTracker'
-import { useEffect, Component, Suspense, type ReactNode } from 'react'
-import { freshUrl, isChunkLoadError, lazyPage } from '@/lib/lazyPage'
-import { noteError, noteReload } from '@/lib/perf/rum'
+import { useEffect, Suspense } from 'react'
+import { lazyPage } from '@/lib/lazyPage'
 import { claimDailyVisit, shouldReloadProfile, type LoadedProfileMark } from '@/lib/authRefreshPolicy'
 import { clearReadCache } from '@/lib/perf/readCoalesce'
 import { LoadingGate } from '@/components/shared/LoadingGate'
+import { LoadErrorBoundary } from '@/components/shared/LoadErrorBoundary'
+import { useSessionExpiry } from '@/lib/draftIdentity'
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state = { error: null }
-  static getDerivedStateFromError(error: Error) { return { error } }
-  // 21.10: что уронило приложение — в RUM (`error …`), иначе причину не узнать.
-  componentDidCatch(error: Error) { noteError(error) }
-  render() {
-    if (this.state.error) {
-      const error = this.state.error as Error
-      // Не доехал файл страницы (обычно — вкладка была открыта до деплоя).
-      // lazyPage такое чинит сам, сюда попадёт лишь то, что он не осилил:
-      // повторный сбой или обрыв не на границе lazy. Показывать пользователю
-      // «Failed to fetch dynamically imported module» и стек в таком случае
-      // бессмысленно — он ничего с этим не сделает, кроме перезагрузки.
-      if (isChunkLoadError(error)) {
-        return (
-          <div className="min-h-screen flex items-center justify-center bg-gray-50 p-8">
-            <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-              <h1 className="text-lg font-bold text-gray-900 mb-2">Вышло обновление</h1>
-              <p className="text-sm text-gray-500">
-                Страница не догрузилась, потому что приложение обновилось. Обновите вкладку —
-                всё встанет на место.
-              </p>
-              <button
-                className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm"
-                // Свежий index.html (?_r=), а не из кэша: иначе те же старые имена файлов (21.10).
-                onClick={() => { noteReload('button:update'); window.location.replace(freshUrl(window.location.href)) }}
-              >
-                Обновить страницу
-              </button>
-            </div>
-          </div>
-        )
-      }
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-red-50 p-8">
-          <div className="bg-white rounded-2xl shadow-lg p-8 max-w-lg w-full">
-            <h1 className="text-xl font-bold text-red-600 mb-3">Ошибка приложения</h1>
-            <pre className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg overflow-auto whitespace-pre-wrap">
-              {error.message}
-              {'\n\n'}
-              {error.stack}
-            </pre>
-            <button
-              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm"
-              onClick={() => { noteReload('button:error'); window.location.reload() }}
-            >
-              Перезагрузить
-            </button>
-          </div>
-        </div>
-      )
-    }
-    return this.props.children
-  }
-}
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import { supabase } from '@/lib/supabase'
@@ -86,8 +32,7 @@ const JoinPage           = lazyPage('JoinPage', () => import('@/pages/JoinPage')
 const JoinTeacherPage    = lazyPage('JoinTeacherPage', () => import('@/pages/JoinTeacherPage').then(m => ({ default: m.JoinTeacherPage })))
 
 // Public — lazy-loaded so framer-motion + landing components stay out of the main chunk.
-// lazyPage вместо голого lazy: он сам перезагружает страницу, если файл чанка
-// не доехал после свежего деплоя (см. комментарий в @/lib/lazyPage).
+// lazyPage добавляет контекст для восстановления при ошибке загрузки ресурса.
 //
 // Лендинга для гостя сейчас нет (письмо ЛК_убрать_старый_лендинг.md, 17.10:
 // «пусть видят сразу вход в ЛК»): `/` и `/about` — на вход. Прежний лендинг
@@ -216,9 +161,11 @@ function profilesEqual(a: Record<string, unknown> | null, b: Record<string, unkn
  */
 export function AppAuth() {
   const { setUser, setSession, setProfile, setLoading, reset } = useAuthStore()
+  useSessionExpiry(clearReadCache)
 
   useEffect(() => {
     let cancelled = false
+    let receivedAuthEvent = false
     /**
      * На старте профиль грузился ДВАЖДЫ: `getSession()` вызывает loadProfile
      * сам, и почти одновременно приходит событие INITIAL_SESSION — с тем же
@@ -232,28 +179,37 @@ export function AppAuth() {
     // 15.11: чей профиль и когда загружен — чтобы возврат на вкладку не перечитывал его каждый раз.
     const loaded: LoadedProfileMark = { profileId: null, loadedAt: 0 }
 
-    function loadProfileOnce(user: { id: string; email?: string; user_metadata?: any }) {
-      const running = inflight.get(user.id)
+    type ProfileUser = { id: string; email?: string; user_metadata?: any }
+    function loadProfileOnce(user: ProfileUser, epoch: number) {
+      const isCurrent = () => {
+        const current = useAuthStore.getState()
+        return !cancelled && current.identityEpoch === epoch && current.user?.id === user.id
+      }
+      if (!isCurrent()) return
+      const key = `${epoch}:${user.id}`
+      const running = inflight.get(key)
       if (running) return running
-      const promise = loadProfile(user).finally(() => { inflight.delete(user.id) })
-      inflight.set(user.id, promise)
+      const promise = loadProfile(user, isCurrent).finally(() => { inflight.delete(key) })
+      inflight.set(key, promise)
       return promise
     }
 
     // §272. Сбой сети при чтении профиля не должен оставлять вечный спиннер: ошибка — в консоль,
     // `loading` снимается всё равно (дальше RoleGuard/DashboardLayout покажут вход или ошибку).
-    async function loadProfile(user: { id: string; email?: string; user_metadata?: any }) {
+    async function loadProfile(user: ProfileUser, isCurrent: () => boolean) {
       try {
-        await loadProfileInner(user)
+        await loadProfileInner(user, isCurrent)
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error('[вход] профиль не загрузился', e)
-        if (!cancelled) setLoading(false)
+        if (isCurrent()) setLoading(false)
       }
     }
 
-    async function loadProfileInner(user: { id: string; email?: string; user_metadata?: any }) {
-      let { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+    async function loadProfileInner(user: ProfileUser, isCurrent: () => boolean) {
+      let { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (!isCurrent()) return
+      if (error) throw error
       // Самозарегистрированный пользователь без профиля (email-подтверждение) →
       // создаём профиль роли student. RLS разрешает само-вставку ТОЛЬКО своей
       // строки (id = auth.uid()), поэтому вставлять можно исключительно там, где
@@ -287,7 +243,10 @@ export function AppAuth() {
           full_name: metaName || email.split('@')[0] || 'Ученик',
           role:      'student',
         } as any)
+        if (!isCurrent()) return
         const res = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+        if (!isCurrent()) return
+        if (res.error) throw res.error
         data = res.data
       }
       // Same auth event fires on every token refresh (periodic, unrelated to
@@ -295,31 +254,32 @@ export function AppAuth() {
       // same as what's already in the store — a fresh object reference here
       // ripples into every `useEffect`/`useMemo` that has `profile` (not
       // `profile?.id`) in its deps array and re-triggers it for nothing.
-      if (!cancelled && data && !profilesEqual(useAuthStore.getState().profile as any, data as any)) {
+      if (!data || data.id !== user.id) { setProfile(null); setLoading(false); return }
+      if (!profilesEqual(useAuthStore.getState().profile as any, data as any)) {
         setProfile(data as any)
       }
-      if (!cancelled && !data) setProfile(null)
-      if (!cancelled) setLoading(false)
-      if (!cancelled && data) { loaded.profileId = user.id; loaded.loadedAt = Date.now() }
+      setLoading(false)
+      loaded.profileId = user.id
+      loaded.loadedAt = Date.now()
 
       // Отметка «человек заходил сегодня» для дашборда школы. Одна строка на
       // человека в сутки, повтор гасит первичный ключ на стороне базы. 15.11:
       // раньше уходила на каждое событие авторизации (у телефона — на каждое
       // возвращение во вкладку); теперь раз в сутки по Москве на устройство.
       // Ошибку намеренно проглатываем: счётчик не должен ломать вход.
-      if (!cancelled && data && claimDailyVisit(user.id)) {
+      if (isCurrent() && claimDailyVisit(user.id)) {
         void (supabase as any).rpc('record_app_visit').then(() => {}, () => {})
       }
     }
 
     // Initialise from persisted session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (cancelled) return
-      setSession(session)
+      if (cancelled || receivedAuthEvent) return
       setUser(session?.user ?? null)
-      if (session?.user) void loadProfileOnce(session.user)
+      setSession(session)
+      if (session?.user) void loadProfileOnce(session.user, useAuthStore.getState().identityEpoch)
       else setLoading(false)
-    })
+    }).catch(() => { if (!cancelled && !receivedAuthEvent) setLoading(false) })
 
     // Listen for subsequent auth events
     // §272. Колбэк НЕ async и профиль грузится через setTimeout(0), а не `await` прямо здесь.
@@ -330,13 +290,19 @@ export function AppAuth() {
     // не нужен). Так документация supabase-js и велит: другие вызовы Supabase — после колбэка.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (cancelled) return
-      setSession(session)
+      receivedAuthEvent = true
+      if (useAuthStore.getState().user?.id !== session?.user?.id) {
+        loaded.profileId = null
+        clearReadCache()
+      }
       setUser(session?.user ?? null)
+      setSession(session)
       if (session?.user) {
         const user = session.user
         // 15.11: тот же человек, профиль свежий — не перечитываем (возврат на вкладку, обновление токена).
         if (!shouldReloadProfile(event, user.id, loaded)) return
-        setTimeout(() => { if (!cancelled) void loadProfileOnce(user) }, 0)
+        const epoch = useAuthStore.getState().identityEpoch
+        setTimeout(() => { if (!cancelled) void loadProfileOnce(user, epoch) }, 0)
       } else if (event === 'SIGNED_OUT') {
         loaded.profileId = null
         clearReadCache()
@@ -358,9 +324,14 @@ export function AppAuth() {
   return null
 }
 
+function AccountRoutes() {
+  const epoch = useAuthStore(state => state.identityEpoch)
+  return <AppRoutes key={epoch} />
+}
+
 export default function App() {
   return (
-    <ErrorBoundary>
+    <LoadErrorBoundary>
     <BrowserRouter>
       <AppAuth />
       {/* §291: свой RUM — сколько ученик ждёт вкладки и запросы к базе */}
@@ -443,10 +414,10 @@ export default function App() {
         <Route path="/jt/:token" element={<JoinTeacherPage />} />
 
         {/* Protected app subtree — lazy chunk, own nested <Routes> (see AppRoutes.tsx) */}
-        <Route path="/*" element={<AppRoutes />} />
+        <Route path="/*" element={<AccountRoutes />} />
       </Routes>
       </Suspense>
     </BrowserRouter>
-    </ErrorBoundary>
+    </LoadErrorBoundary>
   )
 }

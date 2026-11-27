@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom'
+import { LoadErrorBoundary } from '@/components/shared/LoadErrorBoundary'
 import { Sidebar } from './Sidebar'
 import { StudentAvatarMenu, StudentNav } from '@/components/student/nav/StudentNav'
 import { StudentBell } from '@/components/student/nav/StudentBell'
@@ -271,8 +272,8 @@ export function DashboardLayout() {
               ? <WorkModeClosed work={activeWork} section={PAGE_TITLES.find(([pattern]) => pattern.test(location.pathname))?.[1] ?? null} />
               : skin && !studentSkinPage(location.pathname)
                 // Страница ещё в прежнем виде: в тёмной теме — светлым листом.
-                ? <div data-stu-scope="light"><Outlet /></div>
-                : <Outlet />}
+                ? <div data-stu-scope="light"><LoadErrorBoundary resetKey={location.pathname} embedded><Outlet /></LoadErrorBoundary></div>
+                : <LoadErrorBoundary resetKey={location.pathname} embedded><Outlet /></LoadErrorBoundary>}
           </div>
         </main>
       </div>

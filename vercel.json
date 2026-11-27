@@ -2,14 +2,18 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|version[.]json$).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
-      "source": "/((?!assets/|api/).*)",
+      "source": "/((?!assets/|api/|version[.]json$).*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache" }
       ]
+    },
+    {
+      "source": "/version.json",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
     },
     {
       "source": "/assets/(.*).mjs",
