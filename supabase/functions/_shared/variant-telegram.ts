@@ -348,6 +348,17 @@ export function buildMockExamSoonTelegramMessage(payload: MockExamStartTelegramP
   return { text: lines.join('\n'), replyMarkup: null }
 }
 
+/** Сообщение сразу после назначения пробника с установленным временем. */
+export function buildMockExamAssignedTelegramMessage(payload: MockExamStartTelegramPayload, appUrl: string) {
+  const starts = formatWhen(payload.starts_at)
+  const ends = formatWhen(payload.ends_at)
+  const lines = ['📅 <b>Вам назначен пробник</b>', '', `«${escapeHtml(mockTitle(payload.title))}»`]
+  if (starts) lines.push(`Начало: ${escapeHtml(starts)} (МСК)`)
+  if (ends) lines.push(`Окончание: ${escapeHtml(ends)} (МСК)`)
+  const link = typeof payload.link === 'string' ? payload.link : null
+  return { text: lines.join('\n'), replyMarkup: buildLinkButton(link, appUrl, 'Открыть пробник') }
+}
+
 /** «Пробник начался» — в момент начала, с кнопкой на страницу пробника. */
 export function buildMockExamStartTelegramMessage(payload: MockExamStartTelegramPayload, appUrl: string) {
   const to = formatClockMsk(payload.ends_at)
@@ -449,6 +460,7 @@ export function isTelegramPreferenceEnabled(
     // §224. Напоминания о пробнике («через час» и «начался») — под галочкой
     // «Домашние задания»: своей у пробников нет, а по смыслу это задание,
     // которое надо сделать. Ветки явные, чтобы решение было видно здесь.
+    case 'mock_exam_assigned':
     case 'mock_exam_soon':
     case 'mock_exam_started':
       return prefs.homework ?? true
