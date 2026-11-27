@@ -5,7 +5,7 @@ import { buildForecastView, normalizeForecastResponse } from '@/lib/egeForecast'
 import { activeSpec } from '@/lib/egeScales'
 
 /** Прогноз по предмету для виджета: диапазон или null («0» — данных мало). */
-export interface ForecastRange { subject: string; low: number | null; high: number | null }
+export interface ForecastRange { subject: string; score: number | null; low: number | null; high: number | null }
 
 /** «58–70»; одинаковые концы — одно число; данных мало — «0» (письмо ЛК_виджет_прогноз_балла.md, 17.10). */
 export function rangeText(r: ForecastRange | null | undefined): string {
@@ -33,7 +33,9 @@ export function useMyForecastRanges(enabled: boolean, storedForecast?: StoredFor
     void (async () => {
       const stored = storedForecast === undefined ? await fetchMyScoreForecast() : storedForecast
       if (stored) {
-        if (alive) setRows(stored.map(r => ({ subject: r.subject, low: r.ready ? r.low : null, high: r.ready ? r.high : null })))
+        if (alive) setRows(stored.map(r => ({
+          subject: r.subject, score: r.ready ? r.score : null, low: r.ready ? r.low : null, high: r.ready ? r.high : null,
+        })))
         return
       }
       try {
@@ -41,9 +43,10 @@ export function useMyForecastRanges(enabled: boolean, storedForecast?: StoredFor
         const resp = error ? null : normalizeForecastResponse(data)
         const out: ForecastRange[] = (resp?.subjects ?? []).map(s => {
           const spec = activeSpec(s.subject)
-          if (!spec || !resp) return { subject: s.subject, low: null, high: null }
+          if (!spec || !resp) return { subject: s.subject, score: null, low: null, high: null }
           const v = buildForecastView(spec, resp.evidence, resp.now)
-          return v.current.ready ? { subject: s.subject, low: v.low, high: v.high } : { subject: s.subject, low: null, high: null }
+          return v.current.ready ? { subject: s.subject, score: v.score, low: v.low, high: v.high }
+            : { subject: s.subject, score: null, low: null, high: null }
         })
         if (alive) setRows(out)
       } catch {

@@ -1,8 +1,12 @@
-import { Link } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Fragment, useMemo } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowRight, Loader2 } from 'lucide-react'
+import { MockExamHistoryChart } from '@/components/student/MockExamHistoryChart'
+import { Sticker } from '@/components/student/skin/Sticker'
 import { useMyCourseMemberships } from '@/hooks/useMyCourseMemberships'
 import { useMyMockExams } from '@/hooks/useMyMockExams'
 import { useServerNow } from '@/hooks/useServerNow'
+import { isEgeSubject, type EgeSubject } from '@/lib/egeScales'
 import {
   formatCountdown, mockSectionItems, mskDayLong, mskTime,
   type MockLessonListRow, type MockSectionItem,
@@ -21,65 +25,129 @@ import { cn } from '@/utils/cn'
  * на страницу пробника в курсе; «Прошедшие» — итог и разница с прошлым
  * пробником той же группы, если итог виден; иначе «ждёт проверки».
  */
-interface Row extends MockLessonListRow { group: string; course: string }
+interface Row extends MockLessonListRow {
+  group: string
+  course: string
+  subject: string | null
+  examType: string | null
+}
 
 export function MyMockExamsPage() {
+  const [search] = useSearchParams()
+  if (import.meta.env.DEV && search.get('demo') === '1') return <MockExamsDemo />
+  return <StudentMockExams />
+}
+
+function StudentMockExams() {
   const { courses, loading } = useMyCourseMemberships()
-  const groups = courses.flatMap(c => c.groups.map(g => ({ id: g.groupId, label: `${c.title} · ${g.groupTitle}` })))
+  const groups = useMemo(() => courses.flatMap(course => course.groups.map(group => ({
+    id: group.groupId,
+    label: [...new Set([course.title, group.groupTitle].filter(Boolean))].join(' · '),
+    subject: course.subject,
+    examType: course.examType,
+  }))), [courses])
   const byGroup = useMyMockExams(groups.map(g => g.id))
-  const rows: Row[] = groups.flatMap(g => (byGroup[g.id] ?? []).map(e => ({ ...e, group: g.id, course: g.label })))
+  const rows: Row[] = useMemo(() => groups.flatMap(g => (byGroup[g.id] ?? []).map(e => ({
+    ...e, group: g.id, course: g.label, subject: g.subject, examType: g.examType,
+  }))), [groups, byGroup])
+  const forecastSubjects = useMemo(() => [...new Set(
+    courses.filter(course => course.examType === 'ege').map(course => course.subject).filter(isEgeSubject),
+  )], [courses])
   const now = useServerNow(rows[0]?.server_now ?? null, 1000)
+  const loaded = !loading && groups.every(g => byGroup[g.id] !== undefined)
+  return <MockExamsContent rows={rows} now={now} loaded={loaded} forecastSubjects={forecastSubjects} />
+}
+
+const demoNow = '2026-11-27T12:00:00Z'
+const demoRows: Row[] = import.meta.env.DEV ? [
+  { day: '2026-11-06', score: 68 },
+  { day: '2026-11-20', score: 82 },
+].map(({ day, score }, index) => ({
+  id: `demo-${index + 1}`, title: `Демо-пробник №${index + 1}`, group: 'demo', course: 'Математика ЕГЭ',
+  subject: 'math', examType: 'ege', starts_at: `${day}T08:00:00Z`, ends_at: `${day}T12:00:00Z`,
+  photos_until: `${day}T12:15:00Z`, submitted_at: `${day}T11:55:00Z`, has_work: true, notified: true,
+  score, max_score: 100, server_now: demoNow,
+})) : []
+const demoSubjects = ['math'] as const
+
+function MockExamsDemo() {
+  return <MockExamsContent rows={demoRows} now={Date.parse(demoNow)} loaded forecastSubjects={demoSubjects} demo />
+}
+
+function MockExamsContent({ rows, now, loaded, forecastSubjects, demo = false }: {
+  rows: Row[]; now: number; loaded: boolean; forecastSubjects: readonly EgeSubject[]; demo?: boolean
+}) {
   const items = mockSectionItems(rows, now)
   const sections: { key: 'now' | 'upcoming' | 'past'; title: string }[] = [
     { key: 'now', title: 'Сейчас' },
     { key: 'upcoming', title: 'Скоро' },
     { key: 'past', title: 'Прошедшие' },
   ]
-  const loaded = !loading && groups.every(g => byGroup[g.id] !== undefined)
+  const showHistory = items.length > 0 || forecastSubjects.length > 0
 
   return (
-    <div className="mx-auto flex max-w-[640px] flex-col gap-3.5" data-testid="my-mock-exams">
-      <h1 className="px-1 text-2xl font-semibold text-graphite-900">Пробники</h1>
+    <div className="mx-auto flex max-w-[1140px] flex-col gap-5 pb-8 sm:gap-6" data-testid="my-mock-exams">
+      <header className="flex min-w-0 items-center justify-between gap-4">
+        <div>
+          <h1 className="stu-h1">Пробники</h1>
+          {demo && (
+            <p className="stu-muted mt-2 text-sm">
+              Демо · пример результатов и прогноза по математике{' '}
+              <Link to="/my-mock-exams" className="stu-blue stu-focus underline">К моим результатам</Link>
+            </p>
+          )}
+        </div>
+        <Sticker name="plan-rocket" size={68} />
+      </header>
       {!loaded ? (
-        <div className="flex h-40 items-center justify-center gap-2 text-graphite-400"><Loader2 size={18} className="animate-spin" />Загрузка…</div>
-      ) : items.length === 0 ? (
-        <p className="rounded-[18px] bg-white px-4 py-4 text-[15px] text-graphite-600 shadow-card" data-testid="my-mock-exams-empty">
+        <div role="status" className="stu-muted flex h-40 items-center justify-center gap-2"><Loader2 size={18} className="animate-spin" aria-hidden />Загрузка…</div>
+      ) : !showHistory ? (
+        <p className="stu-card stu-muted p-4 text-[15px]" data-testid="my-mock-exams-empty">
           Пробников пока нет. Когда преподаватель назначит пробник, он появится здесь и в разделе «Пробники» курса.
         </p>
       ) : sections.map(sec => {
         const list = items.filter(i => i.group === sec.key)
-        if (list.length === 0) return null
         return (
-          <section key={sec.key} className="flex flex-col gap-2.5" data-testid={`my-mock-${sec.key}`}>
-            <h2 className="px-1 text-[13px] font-bold uppercase tracking-[.05em] text-graphite-500">{sec.title}</h2>
-            {list.map(item => <Card key={item.exam.id} item={item} now={now} all={rows} />)}
-          </section>
+          <Fragment key={sec.key}>
+            {sec.key === 'past' && <MockExamHistoryChart exams={rows} forecastSubjects={forecastSubjects} demo={demo} />}
+            {list.length > 0 && (
+              <section className="grid min-w-0 gap-3" aria-labelledby={`my-mock-${sec.key}-heading`} data-testid={`my-mock-${sec.key}`}>
+                <h2 id={`my-mock-${sec.key}-heading`} className="stu-h2">{sec.title}</h2>
+                <div className="grid min-w-0 gap-3 md:grid-cols-2">
+                  {list.map(item => <Card key={item.exam.id} item={item} now={now} all={rows} demo={demo} />)}
+                </div>
+              </section>
+            )}
+          </Fragment>
         )
       })}
     </div>
   )
 }
 
-function Card({ item, now, all }: { item: MockSectionItem<Row>; now: number; all: Row[] }) {
+function Card({ item, now, all, demo }: { item: MockSectionItem<Row>; now: number; all: Row[]; demo: boolean }) {
   const e = item.exam
   const to = `/my-course/${e.group}/mock/${e.id}`
   const state = { from: 'my-mock-exams' }
   if (item.group === 'now') {
     const open = item.status === 'open'
     return (
-      <div className="flex flex-col gap-2 rounded-[18px] bg-gradient-to-br from-[#2f6bff] to-[#1f55e0] px-4 py-3.5 text-white shadow-card" data-testid="my-mock-card" data-status={item.status}>
-        <span className="text-[13px] text-[#d6e2ff]">{e.course} · {open ? `до ${mskTime(e.ends_at)}` : `фото до ${mskTime(e.photos_until)}`}</span>
-        <b className="text-[17px]">{e.title}</b>
+      <div className="stu-card grid content-start gap-2 p-4 sm:p-5" data-testid="my-mock-card" data-status={item.status}>
+        <div className="flex items-center justify-between gap-3">
+          <span className="stu-tag t-blue">{open ? 'Идёт' : 'Загрузка фото'}</span>
+          <time className="stu-muted text-sm">{open ? `до ${mskTime(e.ends_at)}` : `до ${mskTime(e.photos_until)}`}</time>
+        </div>
+        <b className="stu-h3 break-words">{e.title}</b>
+        <p className="stu-muted text-sm">{e.course}</p>
         {open ? (
-          <div className="font-mono text-[34px] font-extrabold leading-none tracking-[-.02em] tabular-nums" data-testid="my-mock-countdown">{formatCountdown(new Date(e.ends_at).getTime() - now)}</div>
+          <div className="stu-blue mt-1 text-3xl font-extrabold leading-none tabular-nums" data-testid="my-mock-countdown">{formatCountdown(new Date(e.ends_at).getTime() - now)}</div>
         ) : (
           <span className="text-[15px]">{item.status === 'submitted' ? 'Работа сдана — фото второй части можно догрузить.' : 'Время вышло — бланк закрыт, фото ещё можно догрузить.'}</span>
         )}
         <Link to={to} state={state} data-testid="my-mock-open"
-          className={cn('mt-1 inline-flex min-h-12 items-center justify-center rounded-full text-[15px] font-bold',
-            item.primary ? 'bg-gold-300 text-graphite-900 hover:brightness-105' : 'border-[1.5px] border-white/70 text-white hover:bg-white/10')}
+          className={cn('stu-btn mt-2 justify-self-start', item.primary ? 'stu-btn-p' : 'stu-btn-g')}
           data-primary={item.primary || undefined}>
-          {open ? (e.has_work ? 'Продолжить' : 'Начать') : 'Открыть'}
+          {open ? (e.has_work ? 'Продолжить' : 'Начать') : 'Открыть'} <ArrowRight size={16} aria-hidden />
         </Link>
       </div>
     )
@@ -87,37 +155,47 @@ function Card({ item, now, all }: { item: MockSectionItem<Row>; now: number; all
   if (item.group === 'upcoming') {
     const left = new Date(e.starts_at).getTime() - now
     return (
-      <Link to={to} state={state} className="flex flex-col gap-1.5 rounded-[18px] bg-white px-4 py-3.5 shadow-card hover:ring-1 hover:ring-primary-200" data-testid="my-mock-card" data-status={item.status}>
-        <span className="flex items-center justify-between gap-2">
-          <b className="text-[15px] text-graphite-900">{e.title}</b>
-          <span className="whitespace-nowrap rounded-full bg-verdict-unk-tint px-2.5 py-[3px] text-xs font-semibold text-verdict-unk-ink">{untilLabel(left)}</span>
+      <Link to={to} state={state} className="stu-card stu-focus stu-mock-link grid gap-2 p-4 sm:p-5" data-testid="my-mock-card" data-status={item.status}>
+        <span className="flex items-start justify-between gap-3">
+          <b className="stu-h3 min-w-0 break-words">{e.title}</b>
+          <span className="stu-tag t-or">{untilLabel(left)}</span>
         </span>
-        <span className="text-[13px] text-graphite-500">{weekdayDay(e.starts_at)}, {mskTime(e.starts_at)}{e.duration_minutes ? ` · ${durationLabel(e.duration_minutes)}` : ''}</span>
-        <span className="text-[13px] text-graphite-400">{e.course}</span>
+        <time dateTime={e.starts_at} className="stu-muted text-sm">{weekdayDay(e.starts_at)}, {mskTime(e.starts_at)}{e.duration_minutes ? ` · ${durationLabel(e.duration_minutes)}` : ''}</time>
+        <span className="stu-muted text-sm">{e.course}</span>
       </Link>
     )
   }
-  const delta = deltaToPrevious(all, e.id)
-  return (
-    <Link to={to} state={state} className="flex flex-col gap-1.5 rounded-[18px] bg-white px-4 py-3.5 shadow-card hover:ring-1 hover:ring-primary-200" data-testid="my-mock-card" data-status={item.status}>
-      <span className="flex items-center justify-between gap-2">
-        <b className="text-[15px] text-graphite-900">{e.title}</b>
-        {e.score != null ? (
-          <span className="whitespace-nowrap" data-testid="my-mock-score">
-            <b className="text-lg text-graphite-900">{e.score}</b>
-            {delta != null && delta !== 0 && <span className={cn('ml-1.5 font-bold', delta > 0 ? 'text-verdict-ok-ink' : 'text-verdict-bad-ink')} data-testid="my-mock-delta">{delta > 0 ? `+${delta}` : `−${Math.abs(delta)}`}</span>}
-          </span>
+  const score = item.status === 'result' ? e.score : null
+  const delta = score != null ? deltaToPrevious(all.filter(exam => exam.notified && (exam.max_score ?? null) === (e.max_score ?? null)), e.id) : null
+  const result = (
+    <>
+      <span className="flex min-w-0 items-center justify-between gap-3">
+        {score != null ? (
+          <>
+            <Sticker name="mock-medal" size={48} />
+            <span className="text-right tabular-nums" data-testid="my-mock-score">
+              <span className="text-2xl font-extrabold">{score}</span>
+              {e.max_score ? <span className="stu-muted text-xs"> из {e.max_score}</span> : null}
+              {delta != null && delta !== 0 && <span className={cn('ml-2 text-xs font-bold', delta > 0 ? 'text-[var(--greenInk)]' : 'text-[var(--redInk)]')} data-testid="my-mock-delta">{delta > 0 ? `+${delta}` : `−${Math.abs(delta)}`}</span>}
+            </span>
+          </>
         ) : (
-          <span className={cn('whitespace-nowrap rounded-full px-2.5 py-[3px] text-xs font-semibold',
-            item.status === 'missed' ? 'bg-verdict-none-tint text-verdict-none-ink' : 'bg-verdict-unk-tint text-verdict-unk-ink')} data-testid="my-mock-pill">
+          <span className={cn('stu-tag', item.status === 'checking' ? 't-or' : 't-grey')} data-testid="my-mock-pill">
             {item.status === 'missed' ? 'не сдан' : item.status === 'result' ? 'результат' : 'ждёт проверки'}
           </span>
         )}
       </span>
-      <span className="text-[13px] text-graphite-500">{mskDayLong(e.starts_at)}{e.score != null && e.max_score ? ` · из ${e.max_score}` : ''}</span>
-      <span className="text-[13px] text-graphite-400">{e.course}</span>
-    </Link>
+      <span className="grid min-w-0 gap-1">
+        <b className="stu-h3 break-words">{e.title}</b>
+        <time dateTime={e.starts_at} className="stu-muted text-sm">{mskDayLong(e.starts_at)}</time>
+        <span className="stu-muted break-words text-sm">{e.course}</span>
+      </span>
+    </>
   )
+  const className = 'stu-card grid content-start gap-3 p-4 sm:p-5'
+  return demo
+    ? <article className={className} data-testid="my-mock-card" data-status={item.status}>{result}</article>
+    : <Link to={to} state={state} className={cn(className, 'stu-focus stu-mock-link')} data-testid="my-mock-card" data-status={item.status}>{result}</Link>
 }
 
 /** «сб, 10 октября» по Москве. */

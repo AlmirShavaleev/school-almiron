@@ -81,6 +81,8 @@
 
 /* ── Общие детали страниц ─────────────────────────────────────── */
 .stu .stu-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow) }
+.stu .stu-mock-link { transition: border-color .2s }
+.stu .stu-mock-link:hover { border-color: var(--blue) }
 .stu .stu-eb { font-family: 'PT Serif', Georgia, serif; font-style: italic; color: var(--ink2); font-size: 17px }
 .stu .stu-kicker { font-size: 12.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2) }
 .stu .stu-h1 { font-size: clamp(30px, 4.2vw, 48px); line-height: 1.08; font-weight: 800; letter-spacing: -.02em; color: var(--ink) }
