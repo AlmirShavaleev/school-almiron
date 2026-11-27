@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/Button'
 import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
 import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
 import { cn } from '@/utils/cn'
+import { captureAuthOperation, useConfirmedStudentId } from '@/lib/draftIdentity'
+import { acknowledgeDraftAnswer, clearStudentDraft, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey } from '@/lib/studentDrafts'
 
 /**
  * Ученический блок тестирования темы.
@@ -20,7 +22,7 @@ import { cn } from '@/utils/cn'
  * 4. Попытка в прогрессе → форма с заданиями
  * 5. Попытка завершена → результаты и разбор
  */
-export function TopicTestStudent({ topicId }: { topicId: string }) {
+export function TopicTestStudent({ topicId, courseId }: { topicId: string; courseId?: string | null }) {
   // Предпросмотр глазами ученика (§178): описание теста и «Начать тест» видны,
   // кнопка выключена; попытка не создаётся.
   const preview = usePreviewMode()
@@ -28,6 +30,8 @@ export function TopicTestStudent({ topicId }: { topicId: string }) {
     test, items, attempt, answers, loading, error,
     start, saveAnswer, submit, refresh,
   } = useTopicTestStudent(topicId, { preview })
+  const userId = useConfirmedStudentId()
+  const draftKey = studentDraftKey('topic-test', preview ? null : userId, courseId, topicId, test?.id, attempt?.id)
 
   // ──────── Локальное состояние ────────
 
@@ -42,29 +46,37 @@ export function TopicTestStudent({ topicId }: { topicId: string }) {
 
   // Инициализируем localAnswers из ответов с сервера при загрузке
   useEffect(() => {
-    if (attempt?.status === 'in_progress' && answers.length > 0 && Object.keys(localAnswers).length === 0) {
-      const init: Record<string, string> = {}
-      answers.forEach(a => {
-        init[a.item_id] = a.answer_text || ''
-      })
-      setLocalAnswers(init)
-      setSavedAnswers(new Set(answers.map(a => a.item_id)))
+    if (attempt?.status === 'in_progress') {
+      const pending = readStudentDraft<Record<string, string>>(draftKey, {})
+      const server = Object.fromEntries(answers.map(answer => [answer.item_id, answer.answer_text ?? '']))
+      setLocalAnswers({ ...server, ...pending })
+      setSavedAnswers(new Set(answers.map(answer => answer.item_id).filter(id => !(id in pending))))
     }
-  }, [attempt?.status, answers])
+  }, [attempt?.status, answers, draftKey])
+
+  function editAnswer(itemId: string, answer: string) {
+    setLocalAnswers(previous => ({ ...previous, [itemId]: answer }))
+    setSavedAnswers(previous => new Set([...previous].filter(id => id !== itemId)))
+    saveStudentDraft(draftKey, { ...readStudentDraft(draftKey, {}), [itemId]: answer })
+  }
 
   // ──────── Обработчики ────────
 
   async function handleSaveAnswer(itemId: string, text: string) {
+    const assertAccount = captureAuthOperation()
     setLocalError(null)
     try {
       await saveAnswer(itemId, text)
-      setSavedAnswers(prev => new Set([...prev, itemId]))
+      assertAccount()
+      acknowledgeDraftAnswer(draftKey, itemId, text)
+      if (!(itemId in readStudentDraft(draftKey, {}))) setSavedAnswers(prev => new Set([...prev, itemId]))
     } catch (e: any) {
       setLocalError(e?.message ?? 'Ошибка сохранения ответа')
     }
   }
 
   async function handleSubmit() {
+    const assertAccount = captureAuthOperation()
     // 1. Проверка пустых ответов
     const emptyCount = items.filter(item => !localAnswers[item.id]?.trim()).length
     if (emptyCount > 0) {
@@ -77,21 +89,24 @@ export function TopicTestStudent({ topicId }: { topicId: string }) {
     // 2. Сохранить все непустые несохранённые ответы
     setBusySubmit(true)
     setLocalError(null)
+    const releaseReload = holdDraftReload()
     try {
-      const toSave = items.filter(item => {
-        const text = localAnswers[item.id]?.trim()
-        return text && !savedAnswers.has(item.id)
-      })
+      const toSave = items.filter(item => item.id in localAnswers && !savedAnswers.has(item.id))
 
       for (const item of toSave) {
+        assertAccount()
         await saveAnswer(item.id, localAnswers[item.id])
       }
 
       // 3. Отправить тест
+      assertAccount()
       await submit()
+      assertAccount()
+      clearStudentDraft(draftKey)
     } catch (e: any) {
       setLocalError(e?.message ?? 'Ошибка отправки теста')
     } finally {
+      releaseReload()
       setBusySubmit(false)
     }
   }
@@ -211,7 +226,8 @@ export function TopicTestStudent({ topicId }: { topicId: string }) {
               {/* Поле ответа */}
               <textarea
                 value={localAnswers[item.id] || ''}
-                onChange={e => setLocalAnswers(prev => ({ ...prev, [item.id]: e.target.value }))}
+                disabled={busySubmit}
+                onChange={e => editAnswer(item.id, e.target.value)}
                 onBlur={e => handleSaveAnswer(item.id, e.target.value)}
                 placeholder="Ваш ответ…"
                 rows={3}

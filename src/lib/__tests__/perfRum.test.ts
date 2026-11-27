@@ -54,9 +54,9 @@ describe('замер', () => {
   it('диагностическое событие не использует возраст открытой вкладки', () => {
     noteNav('hide', '/my-homework')
     noteError('example')
-    expect(takeBatch()).toMatchObject([
-      { k: 'nav', l: 'hide /my-homework', ms: 0 },
-      { k: 'nav', l: 'error example', ms: 0 },
+    expect(takeBatch()).toMatchObject([{ k: 'nav', l: 'hide /my-homework', ms: 0 }])
+    expect(JSON.parse(sessionStorage.getItem('rum:diagnostics') ?? '[]')).toMatchObject([
+      { k: 'nav', l: 'error runtime', ms: 0, client_ms: expect.any(Number) },
     ])
   })
 
@@ -192,15 +192,32 @@ describe('диагностика перезагрузок (21.10)', () => {
     stop()
   })
 
-  it('ошибки страницы — «error <сообщение>», не больше 20 за загрузку; uuid вырезаются', () => {
+  it('ошибки страницы не содержат исходный текст и дубликаты', () => {
     const t: RumTransport = { signedIn: () => false, send: vi.fn(async () => {}), sendOnExit: vi.fn() }
     const stop = startRum(t)
     takeBatch()
     window.dispatchEvent(new ErrorEvent('error', { error: new TypeError('x of 0c430ec6-1111-2222-3333-444444444444 is undefined') }))
-    for (let i = 0; i < 30; i++) noteError('loop')
-    const labels = takeBatch().map(e => e.l)
-    expect(labels[0]).toBe('error TypeError: x of :id is undefined')
-    expect(labels.filter(l => l.startsWith('error'))).toHaveLength(20)
+    for (let i = 0; i < 30; i++) noteError('private text')
+    const value = sessionStorage.getItem('rum:diagnostics') ?? '[]'
+    expect(JSON.parse(value)).toEqual([expect.objectContaining({
+      l: 'error runtime', error_type: 'runtime', tab_id: expect.any(String), build_id: 'dev',
+    })])
+    expect(value).not.toMatch(/undefined|private text|0c430ec6/)
+    stop()
+  })
+
+  it('сохраняет сбой ресурса при неудачной отправке и повторяет при восстановлении сети', async () => {
+    vi.useFakeTimers()
+    const sendOnExit = vi.fn(async () => true).mockResolvedValueOnce(false)
+    const stop = startRum({ signedIn: () => true, send: vi.fn(async () => {}), sendOnExit }, { sampleRate: 0 })
+    noteError(new Error('Unable to preload CSS for /assets/Lesson-DTw7_tVx.css?token=private'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sessionStorage.getItem('rum:diagnostics')).toContain('/assets/Lesson-DTw7_tVx.css')
+    expect(sessionStorage.getItem('rum:diagnostics')).not.toContain('private')
+    window.dispatchEvent(new Event('online'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sendOnExit).toHaveBeenCalledTimes(2)
+    expect(sessionStorage.getItem('rum:diagnostics')).toBe('[]')
     stop()
   })
 })

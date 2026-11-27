@@ -10,12 +10,14 @@
  *           ЛК_СРОЧНО_урок_перезагрузка_НЕ_исправлено.md) ещё диагностика —
  *           `type <navigate|reload|back_forward|prerender> <путь>` (как открыли
  *           страницу), `reload <причина> <путь>` (перед программной перезагрузкой),
- *           `error <сообщение>` (window.onerror / unhandledrejection). Отдельного
- *           kind нет: в базе ограничение route|api|nav, а выкатить нужно сегодня.
- * Профиль и роль добавляет сервер (`perf_ingest`, auth.uid()). Отправка
+ *           а также ошибки загрузки без текста исключения и личных данных.
+ * Для обычных замеров профиль и роль добавляет сервер (`perf_ingest`). Отправка
  * пачкой раз в 30 с и при уходе со страницы; любые ошибки — молча: RUM не
  * должен мешать ученику.
  */
+
+import { BUILD_ID } from '@/lib/buildVersion'
+import { classifyChunkFailure, safeAssetResource } from '@/lib/lazyPage'
 
 export type PerfKind = 'route' | 'api' | 'nav'
 export interface PerfEvent {
@@ -24,6 +26,11 @@ export interface PerfEvent {
   ms: number
   s?: number
   d: 'mobile' | 'desktop'
+  build_id?: string
+  resource_url?: string
+  error_type?: 'chunk_js' | 'chunk_css' | 'runtime'
+  client_ms?: number
+  tab_id?: string
 }
 
 const MAX_QUEUE = 1000
@@ -164,8 +171,13 @@ export function timedFetch(base: typeof fetch): typeof fetch {
 // ── диагностика перезагрузок и ошибок (21.10) ────────────────────────────────
 
 const PENDING_KEY = 'rum:pending'
+const DIAGNOSTICS_KEY = 'rum:diagnostics'
+const TAB_KEY = 'rum:tab'
 const MAX_ERRORS = 20
-let errorsThisPage = 0
+const errorsThisPage = new Set<string>()
+let tabId: string | undefined
+let diagnostics: PerfEvent[] | undefined
+let diagnosticsInFlight = false
 let activeTransport: RumTransport | null = null
 
 function keepPending(events: PerfEvent[]): void {
@@ -200,14 +212,43 @@ function noteUrgent(label: string, ms: number = 0): void {
 
 /** Отправить отложенные важные события, если есть вход. */
 function sendPending(): void {
+  if (!activeTransport?.signedIn()) return
   try {
-    if (!activeTransport?.signedIn()) return
     const raw = localStorage.getItem(PENDING_KEY)
     const list = raw ? JSON.parse(raw) : []
-    if (!Array.isArray(list) || list.length === 0) return
     localStorage.removeItem(PENDING_KEY)
-    activeTransport.sendOnExit(list.slice(-50))
+    if (Array.isArray(list) && list.length) activeTransport.sendOnExit(list.slice(-50))
   } catch { /* RUM молчит */ }
+  sendDiagnostics()
+}
+
+function readDiagnostics(): PerfEvent[] {
+  if (!diagnostics) {
+    diagnostics = []
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(DIAGNOSTICS_KEY) ?? '[]')
+      if (Array.isArray(saved)) diagnostics = saved.slice(-MAX_ERRORS)
+    } catch { /* Storage can be unavailable. */ }
+  }
+  return diagnostics
+}
+
+function persistDiagnostics() {
+  try { sessionStorage.setItem(DIAGNOSTICS_KEY, JSON.stringify(readDiagnostics())) } catch { /* best effort */ }
+}
+
+function sendDiagnostics() {
+  if (!activeTransport?.signedIn() || diagnosticsInFlight || !navigator.onLine) return
+  const batch = readDiagnostics().slice()
+  if (!batch.length) return
+  diagnosticsInFlight = true
+  try {
+    void Promise.resolve(activeTransport.sendOnExit(batch)).then(sent => {
+      if (sent === false) return
+      diagnostics = readDiagnostics().filter(event => !batch.includes(event))
+      persistDiagnostics()
+    }).catch(() => {}).finally(() => { diagnosticsInFlight = false })
+  } catch { diagnosticsInFlight = false }
 }
 
 /** Перед любой программной перезагрузкой: причина — важным событием. */
@@ -326,13 +367,54 @@ function markAlive(): void {
   try { if (sessionStorage.getItem(ALIVE_KEY)) sessionStorage.setItem(ALIVE_KEY, routeLabel(location.pathname)) } catch { /* RUM молчит */ }
 }
 
-/** Ошибка страницы — коротко, без стека; не больше 20 на загрузку. */
-export function noteError(message: unknown): void {
-  if (errorsThisPage >= MAX_ERRORS) return
-  errorsThisPage++
-  const text = (message instanceof Error ? `${message.name}: ${message.message}` : String(message ?? 'unknown'))
-    .replace(UUID_RE, ':id').replace(/\s+/g, ' ').trim()
-  record('nav', `error ${text}`.slice(0, 120), 0)
+function diagnosticTabId(): string | undefined {
+  if (tabId) return tabId
+  try { tabId = sessionStorage.getItem(TAB_KEY) ?? undefined } catch { /* best effort */ }
+  if (!tabId) {
+    tabId = globalThis.crypto?.randomUUID?.()
+    try { if (tabId) sessionStorage.setItem(TAB_KEY, tabId) } catch { /* this document still has an ID */ }
+  }
+  return tabId
+}
+
+/** Collect a same-origin failed dependency when the browser exposes its HTTP status. */
+function failedAsset(resource: string | null) {
+  const entries = performance.getEntriesByType?.('resource') ?? []
+  const failed = new Map<string, { status: number; ms: number }>()
+  for (const raw of entries) {
+    const entry = raw as PerformanceResourceTiming & { responseStatus?: number }
+    if (!entry.responseStatus || entry.responseStatus < 400 || now() - entry.responseEnd > 3_000) continue
+    const path = safeAssetResource(entry.name)
+    if (path) failed.set(path, { status: entry.responseStatus, ms: Math.round(entry.duration) })
+  }
+  const selected = resource && failed.has(resource) ? resource
+    : failed.size === 1 ? failed.keys().next().value as string : resource
+  return { resource: selected, result: selected ? failed.get(selected) : undefined }
+}
+
+export function noteError(error: unknown): void {
+  try {
+    const failure = classifyChunkFailure(error)
+    if (!sampled && !failure) return
+    const asset = failure ? failedAsset(failure.resource) : null
+    const resource = asset?.resource
+    const type = resource ? (resource.endsWith('.css') ? 'chunk_css' : 'chunk_js') : failure?.type ?? 'runtime'
+    const key = `${type}:${resource ?? ''}`
+    if (errorsThisPage.size >= MAX_ERRORS || errorsThisPage.has(key)) return
+    errorsThisPage.add(key)
+    const id = diagnosticTabId()
+    if (!id) return
+    const list = readDiagnostics()
+    list.push({
+      k: 'nav', l: failure ? 'error asset' : 'error runtime', d: device,
+      ms: asset?.result?.ms ?? 0, s: asset?.result?.status,
+      build_id: BUILD_ID, resource_url: resource ?? undefined,
+      error_type: type, client_ms: Date.now(), tab_id: id,
+    })
+    if (list.length > MAX_ERRORS) list.shift()
+    persistDiagnostics()
+    sendDiagnostics()
+  } catch { /* RUM must leave recovery available. */ }
 }
 
 // ── отправка ───────────────────────────────────────────────────────────────
@@ -341,7 +423,7 @@ export interface RumTransport {
   /** Обычная отправка (RPC perf_ingest). Ошибки глотаются вызывающим. */
   send: (events: PerfEvent[]) => Promise<unknown>
   /** При уходе со страницы: keepalive-запрос (переживает закрытие вкладки). */
-  sendOnExit: (events: PerfEvent[]) => void
+  sendOnExit: (events: PerfEvent[]) => void | Promise<boolean>
   /** Есть ли вход: без него не шлём (сервер всё равно вернёт 0). */
   signedIn: () => boolean
 }
@@ -372,8 +454,11 @@ export function startRum(
   // вкладку, которую убили раз, часто убивают и второй.
   const onError = (e: ErrorEvent) => noteError(e.error ?? e.message)
   const onRejection = (e: PromiseRejectionEvent) => noteError(e.reason)
+  const onPreloadError = (event: Event) => noteError((event as Event & { payload?: unknown }).payload)
   window.addEventListener('error', onError)
   window.addEventListener('unhandledrejection', onRejection)
+  window.addEventListener('vite:preloadError', onPreloadError)
+  window.addEventListener('online', sendPending)
 
   const flush = () => {
     sendPending()
@@ -421,6 +506,8 @@ export function startRum(
     window.removeEventListener('pageshow', onPageShow)
     window.removeEventListener('error', onError)
     window.removeEventListener('unhandledrejection', onRejection)
+    window.removeEventListener('vite:preloadError', onPreloadError)
+    window.removeEventListener('online', sendPending)
     activeTransport = null
     started = false
   }
@@ -480,7 +567,10 @@ export function recordNavigationTiming(): void {
 /** Только для тестов: сбросить состояние модуля. */
 export function __resetRumForTests(): void {
   queue.length = 0
-  errorsThisPage = 0
+  errorsThisPage.clear()
+  diagnostics = undefined
+  diagnosticsInFlight = false
+  tabId = undefined
   activeTransport = null
   inflight = 0
   routeStart = null
@@ -493,5 +583,7 @@ export function __resetRumForTests(): void {
   crashChecked = false
   navigationTimingRecorded = false
   urgentSeen.clear()
-  try { sessionStorage.removeItem(ALIVE_KEY); sessionStorage.removeItem(HIDDEN_KEY) } catch { /* нет хранилища */ }
+  try {
+    for (const key of [ALIVE_KEY, HIDDEN_KEY, DIAGNOSTICS_KEY, TAB_KEY]) sessionStorage.removeItem(key)
+  } catch { /* нет хранилища */ }
 }

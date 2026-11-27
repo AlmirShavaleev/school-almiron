@@ -13,7 +13,7 @@ import { render, act } from '@testing-library/react'
 
 type MockResult = { data: unknown; error: { message: string } | null }
 
-function makeChain(result: MockResult) {
+function makeChain(result: MockResult | Promise<MockResult>) {
   const chain: any = new Proxy({}, {
     get(_target, prop) {
       if (prop === 'then') {
@@ -295,5 +295,29 @@ describe('§272: колбэк onAuthStateChange не ждёт запросов S
     expect(fromSpy).toHaveBeenCalledWith('profiles')
     expect(useAuthStore.getState().loading).toBe(false)
     expect(useAuthStore.getState().profile?.full_name).toBe('Ann')
+  })
+
+  it('ignores a profile response from a previous identity, including an A–B–A transition', async () => {
+    let completeFirst!: (result: MockResult) => void
+    const first = new Promise<MockResult>(resolve => { completeFirst = resolve })
+    fromSpy.mockImplementationOnce(() => makeChain(first))
+    render(<AppAuth />)
+
+    async function signIn(id: string) {
+      await act(async () => {
+        authCallback!('SIGNED_IN', { user: { id, email: id + '@example.invalid' } })
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
+    }
+
+    await signIn('u1')
+    expect(useAuthStore.getState().profile).toBeNull()
+    profileRow = { id: 'u2', full_name: 'Current B', role: 'student' }
+    await signIn('u2')
+    expect(useAuthStore.getState().profile?.id).toBe('u2')
+    profileRow = { id: 'u1', full_name: 'New A', role: 'student' }
+    await signIn('u1')
+    await act(async () => { completeFirst({ data: { id: 'u1', full_name: 'Stale A', role: 'student' }, error: null }) })
+    expect(useAuthStore.getState().profile?.full_name).toBe('New A')
   })
 })

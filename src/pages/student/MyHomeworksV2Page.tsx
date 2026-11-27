@@ -8,13 +8,19 @@ import { useHomeworkAttemptV2 } from '@/hooks/useHomeworkAttemptV2'
 import { HW_V2_CATEGORY_LABELS, type HomeworkV2Category, type HomeworkV2Row } from '@/types/homeworkV2'
 import { formatDate } from '@/utils/format'
 import { cn } from '@/utils/cn'
+import { useAuthStore } from '@/store/authStore'
+import { useConfirmedStudentId } from '@/lib/draftIdentity'
+import { clearStudentDraft, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey, useDraftFiles } from '@/lib/studentDrafts'
+import { DraftFilesStatus } from '@/components/student/DraftFilesStatus'
 
 const TABS: HomeworkV2Category[] = ['new', 'to_do', 'under_review', 'returned_for_revision', 'checked']
 
 export function MyHomeworksV2Page() {
   const { rows, loading, error, reload } = useMyHomeworkAssignments()
   const [tab, setTab] = useState<HomeworkV2Category>('to_do')
-  const [target, setTarget] = useState<HomeworkV2Row | null>(null)
+  const epoch = useAuthStore(state => state.identityEpoch)
+  const owner = useConfirmedStudentId()
+  const [target, setTarget] = useState<{ row: HomeworkV2Row; epoch: number } | null>(null)
 
   const counts = useMemo(() => {
     const c: Record<string, number> = {}
@@ -87,7 +93,7 @@ export function MyHomeworksV2Page() {
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     {(tab === 'new' || tab === 'to_do' || tab === 'returned_for_revision') && !r.is_excused && (
-                      <Button size="sm" onClick={() => setTarget(r)}>
+                      <Button size="sm" onClick={() => { if (owner) setTarget({ row: r, epoch }) }}>
                         {tab === 'returned_for_revision' ? 'Пересдать' : 'Сдать'}
                       </Button>
                     )}
@@ -99,21 +105,32 @@ export function MyHomeworksV2Page() {
         )}
       </Card>
 
-      {target && (
-        <SubmitAttemptModal row={target} onClose={() => setTarget(null)} onSubmitted={() => { setTarget(null); reload() }} />
+      {owner && target?.epoch === epoch && (
+        <SubmitAttemptModal key={epoch} row={target.row} owner={owner} epoch={epoch} onClose={() => setTarget(null)} onSubmitted={() => { setTarget(null); reload() }} />
       )}
     </div>
   )
 }
 
-function SubmitAttemptModal({ row, onClose, onSubmitted }: { row: HomeworkV2Row; onClose: () => void; onSubmitted: () => void }) {
+function SubmitAttemptModal({ row, owner, epoch, onClose, onSubmitted }: { row: HomeworkV2Row; owner: string; epoch: number; onClose: () => void; onSubmitted: () => void }) {
   const { submitAttempt, submitting, error } = useHomeworkAttemptV2()
-  const [answerText, setAnswerText] = useState('')
-  const [files, setFiles] = useState<File[]>([])
+  const scope = [owner, row.course_id, 'course-assignment', row.assignment_id] as const
+  const key = studentDraftKey('homework-text', ...scope)
+  const [answerText, setAnswerText] = useState(() => readStudentDraft(key, ''))
+  const [files, setFiles, restoration] = useDraftFiles(studentDraftKey('homework-files', ...scope))
+  const filesReady = restoration.phase === 'ready'
 
   async function handleSubmit() {
-    await submitAttempt(row.assignment_id, answerText, files)
-    onSubmitted()
+    if (!filesReady || useAuthStore.getState().identityEpoch !== epoch) return
+    const releaseReload = holdDraftReload()
+    try {
+      await submitAttempt(row.assignment_id, answerText, files)
+      if (useAuthStore.getState().identityEpoch !== epoch) return
+      clearStudentDraft(key)
+      setFiles([])
+      onSubmitted()
+    } catch { /* The form keeps its draft and the mutation displays its error. */ }
+    finally { releaseReload() }
   }
 
   return (
@@ -127,14 +144,17 @@ function SubmitAttemptModal({ row, onClose, onSubmitted }: { row: HomeworkV2Row;
         <div className="p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Ответ</label>
-            <textarea rows={4} value={answerText} onChange={e => setAnswerText(e.target.value)}
+            <textarea rows={4} value={answerText} disabled={submitting} onChange={e => {
+              setAnswerText(e.target.value)
+              saveStudentDraft(key, e.target.value)
+            }}
               className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Файлы</label>
             <label className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-primary-300 hover:text-primary-500 cursor-pointer transition-colors">
               <Paperclip size={16} />Прикрепить файлы
-              <input type="file" multiple className="hidden" onChange={e => setFiles(Array.from(e.target.files || []))} />
+              <input type="file" multiple disabled={submitting || !filesReady} className="hidden" onChange={e => setFiles(Array.from(e.target.files || []))} />
             </label>
             {files.length > 0 && (
               <ul className="mt-2 space-y-1">
@@ -144,10 +164,11 @@ function SubmitAttemptModal({ row, onClose, onSubmitted }: { row: HomeworkV2Row;
               </ul>
             )}
           </div>
+          <DraftFilesStatus {...restoration} />
           {error && <p className="text-sm text-red-500 bg-red-50 p-3 rounded-lg">{error}</p>}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Отмена</Button>
-            <Button type="button" loading={submitting} onClick={handleSubmit} className="flex-1">Отправить</Button>
+            <Button type="button" loading={submitting} disabled={!filesReady} onClick={handleSubmit} className="flex-1">Отправить</Button>
           </div>
         </div>
       </div>

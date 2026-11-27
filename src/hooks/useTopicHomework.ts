@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { captureAuthOperation } from '@/lib/draftIdentity'
 import { safeRpc } from '@/lib/safeRpc'
 import { removeIfOrphan } from '@/lib/storageRefs'
 import { uploadToStorage } from '@/lib/storageUpload'
@@ -376,6 +377,7 @@ export function useTopicHomework(topicId: string | null, options: {
       onProgress?: (index: number, percent: number) => void,
       photoTaskNumber?: string,
     ): Promise<TopicHomeworkAttemptFileRow[]> => {
+      const assertAccount = captureAuthOperation()
       if (incoming.length === 0) return []
 
       // Формат проверяем ДО сжатия и до Storage — и по всей пачке сразу, до
@@ -408,9 +410,11 @@ export function useTopicHomework(topicId: string | null, options: {
           ? new File([original], original.name, { type, lastModified: original.lastModified })
           : original
         const upload = await compressImageFile(source, HOMEWORK_PHOTO_PRESET)
+        assertAccount()
         const path = buildAttemptFilePath(attemptId, upload.name)
 
         await uploadToStorage(TOPIC_HOMEWORK_ATTEMPTS_BUCKET, path, upload, onProgress ? p => onProgress(i, Math.min(p, 99)) : undefined)
+        assertAccount()
 
         const { data, error: err } = await supabase
           .from('topic_homework_attempt_files')
@@ -431,6 +435,7 @@ export function useTopicHomework(topicId: string | null, options: {
           throw err
         }
         const row = data as TopicHomeworkAttemptFileRow
+        assertAccount()
         inserted.push(row)
         attemptFilesVersion.current += 1
         setAttemptFiles(prev => prev.some(file => file.id === row.id) ? prev : [...prev, row])

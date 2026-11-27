@@ -18,6 +18,8 @@ import { cn } from '@/utils/cn'
 import { renderCatalogContent } from '@/lib/catalogContent'
 import { upgradeMathIn } from '@/lib/katexLoader'
 import { TopicTaskNumberButton } from './TopicTaskNumberButton'
+import { captureAuthOperation, useConfirmedStudentId } from '@/lib/draftIdentity'
+import { clearStudentDraft, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey } from '@/lib/studentDrafts'
 
 /**
  * §266. Блок «Задачи с автопроверкой» тренировочного урока — по макету
@@ -33,10 +35,12 @@ import { TopicTaskNumberButton } from './TopicTaskNumberButton'
  * Далее». Открывается первая незакрытая задача.
  */
 export function TopicAutocheckStudent({
+  courseId,
   state,
   onCheck,
   preview = false,
 }: {
+  courseId?: string | null
   state: AutocheckState
   onCheck: (taskId: string, answer: string) => Promise<CheckResult>
   /** Предпросмотр персонала: поле и кнопка выключены, ничего не отправляется. */
@@ -67,7 +71,7 @@ export function TopicAutocheckStudent({
       {state.tasks.length === 0 ? (
         <p className="text-sm text-graphite-500">Задачи ещё не добавлены.</p>
       ) : (
-        <TaskStepper tasks={state.tasks} onCheck={onCheck} preview={preview} />
+        <TaskStepper courseId={courseId} topicId={state.topicId} tasks={state.tasks} onCheck={onCheck} preview={preview} />
       )}
 
       <p className="text-[13px] leading-snug text-graphite-500">
@@ -106,10 +110,14 @@ function firstOpenIndex(tasks: AutocheckTask[]): number {
 }
 
 function TaskStepper({
+  courseId,
+  topicId,
   tasks,
   onCheck,
   preview,
 }: {
+  courseId?: string | null
+  topicId: string
   tasks: AutocheckTask[]
   onCheck: (taskId: string, answer: string) => Promise<CheckResult>
   preview: boolean
@@ -153,7 +161,7 @@ function TaskStepper({
       </nav>
 
       <ol>
-        <AutocheckTaskCard key={task.id} task={task} n={idx + 1} onCheck={onCheck} preview={preview} />
+        <AutocheckTaskCard key={task.id} courseId={courseId} topicId={topicId} task={task} n={idx + 1} onCheck={onCheck} preview={preview} />
       </ol>
 
       <div className="flex items-center justify-between gap-2">
@@ -190,22 +198,34 @@ function TaskStepper({
 }
 
 function AutocheckTaskCard({
+  courseId,
+  topicId,
   task,
   n,
   onCheck,
   preview,
 }: {
+  courseId?: string | null
+  topicId: string
   task: AutocheckTask
   n: number
   onCheck: (taskId: string, answer: string) => Promise<CheckResult>
   preview: boolean
 }) {
-  const [value, setValue] = useState('')
+  const userId = useConfirmedStudentId()
+  const draft = studentDraftKey('autocheck', preview ? null : userId, courseId, topicId, task.id)
+  const [value, setValue] = useState(() => readStudentDraft(draft, ''))
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
   const inputId = `autocheck-${task.id}`
   const msgId = `${inputId}-msg`
+
+  function edit(next: string) {
+    setValue(next)
+    saveStudentDraft(draft, next)
+    if (message) setMessage(null)
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -214,13 +234,22 @@ function AutocheckTaskCard({
     if (formatError) { setMessage({ tone: 'bad', text: formatError }); return }
     setBusy(true)
     setMessage(null)
+    const releaseReload = holdDraftReload()
+    const assertAccount = captureAuthOperation()
     try {
       const res = await onCheck(task.id, value)
+      assertAccount()
       if (!res.ok) setMessage({ tone: 'bad', text: res.error ?? 'Не удалось проверить ответ' })
       else if (!res.correct) setMessage({ tone: 'bad', text: 'Неверно, попробуйте ещё' })
       else setMessage(null)
-      if (res.ok && !res.correct) setValue('')
+      if (res.ok) {
+        clearStudentDraft(draft)
+        if (!res.correct) setValue('')
+      }
+    } catch (error) {
+      setMessage({ tone: 'bad', text: error instanceof Error ? error.message : 'Не удалось проверить ответ' })
     } finally {
+      releaseReload()
       setBusy(false)
     }
   }
@@ -257,7 +286,7 @@ function AutocheckTaskCard({
             autoComplete="off"
             placeholder="Ответ"
             value={value}
-            onChange={e => { setValue(e.target.value); if (message) setMessage(null) }}
+            onChange={e => edit(e.target.value)}
             disabled={preview || busy}
             title={preview ? PREVIEW_NOOP_MESSAGE : undefined}
             aria-describedby={message ? msgId : undefined}
@@ -268,7 +297,7 @@ function AutocheckTaskCard({
             <MinusToggle
               value={value}
               getInput={() => inputRef.current}
-              onChange={v => { setValue(v); if (message) setMessage(null) }}
+              onChange={edit}
               disabled={busy}
               testid="autocheck-minus"
               className="min-h-11 sm:h-9 sm:min-h-9"

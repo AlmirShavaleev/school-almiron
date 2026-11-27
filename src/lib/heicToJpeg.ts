@@ -93,14 +93,16 @@ export async function heicToJpeg(file: File): Promise<File | null> {
 export async function prepareWorkFiles(
   files: File[],
   convert: (f: File) => Promise<File | null> = heicToJpeg,
-): Promise<{ accepted: File[]; rejected: RejectedHomeworkFile[] }> {
+): Promise<{ accepted: File[]; rejected: RejectedHomeworkFile[]; originals: File[] }> {
   const { accepted, rejected } = splitHomeworkFiles(files)
   const out: File[] = []
+  const originals: File[] = []
   for (const f of accepted) {
     if (isHeic(f)) {
       const jpg = await convert(f)
       if (!jpg) { rejected.push({ file: f, problem: HEIC_REFUSAL }); continue }
       out.push(jpg)
+      originals.push(f)
       continue
     }
     if (f.size > WORK_FILE_MAX_BYTES) {
@@ -108,6 +110,7 @@ export async function prepareWorkFiles(
       continue
     }
     out.push(f)
+    originals.push(f)
   }
-  return { accepted: out, rejected }
+  return { accepted: out, rejected, originals }
 }

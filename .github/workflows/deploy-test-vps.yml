@@ -1,8 +1,6 @@
-name: Deploy Almiron to test VPS
+name: Deploy Almiron to VPS
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,8 +12,11 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      ALMIRON_BUILD_ID: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,6 +30,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test static asset publishing
+        run: |
+          node --test scripts/audit-build-assets.test.mjs
+          python3 scripts/test-deploy-vps.py
+
       - name: Build static site
         run: npm run build
         env:
@@ -39,53 +45,36 @@ jobs:
           VITE_BUNNY_CDN_HOST: ${{ vars.VITE_BUNNY_CDN_HOST }}
           VITE_LANDING_V3: ${{ vars.VITE_LANDING_V3 }}
 
+      - name: Verify the built dependency graph
+        run: node scripts/audit-build-assets.mjs dist
+
+      - name: Verify deployment and recovery scenarios
+        run: |
+          npm test -- src/lib/__tests__/perfAssetIngest.test.ts src/lib/__tests__/perfRum.test.ts src/lib/__tests__/releaseRecovery.test.ts src/hooks/__tests__/useVariantAttempt.submit.test.ts src/pages/student/__tests__/preflight-account-switch.test.tsx
+          npx playwright install --with-deps chromium
+          node --test scripts/test-deploy-browser.mjs
+
       - name: Configure SSH and verify VPS host key
         env:
           DEPLOY_PRIVATE_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
         run: |
           set -euo pipefail
           test -n "$DEPLOY_PRIVATE_KEY"
-          install -m 700 -d "$HOME/.ssh"
-          printf '%s\n' "$DEPLOY_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
-          chmod 600 "$HOME/.ssh/id_ed25519"
-          ssh-keyscan -T 10 -t ed25519 45.84.227.23 > "$HOME/.ssh/known_hosts"
-          actual="$(ssh-keygen -lf "$HOME/.ssh/known_hosts" -E sha256 | awk '{print $2}')"
+          install -m 700 -d "$RUNNER_TEMP/almiron-ssh"
+          printf '%s\n' "$DEPLOY_PRIVATE_KEY" > "$RUNNER_TEMP/almiron-ssh/key"
+          chmod 600 "$RUNNER_TEMP/almiron-ssh/key"
+          ssh-keyscan -T 10 -t ed25519 45.84.227.23 > "$RUNNER_TEMP/almiron-ssh/known_hosts"
+          actual="$(ssh-keygen -lf "$RUNNER_TEMP/almiron-ssh/known_hosts" -E sha256 | awk '{print $2}')"
           test "$actual" = 'SHA256:xDAxPUKVD20TWffiRqL/f5Y5OoHhjKTiF7OvcCZkC00'
 
-      - name: Upload release
+      - name: Publish assets, activate, and verify or roll back
         run: |
           set -euo pipefail
           tar -czf site.tar.gz -C dist .
-          ssh -o BatchMode=yes almiron-deploy@45.84.227.23 \
-            "mkdir -p /srv/almiron/releases/$GITHUB_SHA"
-          scp -o BatchMode=yes site.tar.gz \
-            "almiron-deploy@45.84.227.23:/srv/almiron/releases/$GITHUB_SHA/site.tar.gz"
-
-      - name: Activate release atomically
-        run: |
-          set -euo pipefail
-          ssh -o BatchMode=yes almiron-deploy@45.84.227.23 "bash -se -- '$GITHUB_SHA'" <<'REMOTE'
-          set -euo pipefail
-          release="/srv/almiron/releases/$1"
-          tar -xzf "$release/site.tar.gz" -C "$release"
-          rm -f "$release/site.tar.gz"
-          test -s "$release/index.html"
-          test -d "$release/assets"
-
-          # Retain old hashed assets for students with already-open browser tabs.
-          previous="$(readlink -f /srv/almiron/current || true)"
-          if [ -n "$previous" ] && [ -d "$previous/assets" ]; then
-            cp -an "$previous/assets/." "$release/assets/"
-          fi
-
-          find "$release" -type d -exec chmod 755 {} +
-          find "$release" -type f -exec chmod 644 {} +
-
-          ln -s "$release" /srv/almiron/.current-next
-          mv -Tf /srv/almiron/.current-next /srv/almiron/current
-          REMOTE
-
-      - name: Check test site
-        run: |
-          curl --fail --silent --show-error --head --retry 3 --retry-delay 2 \
-            https://test.almiron.ru/
+          options=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/almiron-ssh/known_hosts" -i "$RUNNER_TEMP/almiron-ssh/key")
+          server=almiron-deploy@45.84.227.23
+          remote="$(ssh "${options[@]}" "$server" 'mktemp -d /tmp/almiron-release.XXXXXXXX')"
+          [[ "$remote" =~ ^/tmp/almiron-release\.[a-zA-Z0-9]+$ ]]
+          trap 'ssh "${options[@]}" "$server" "rm -f -- $remote/site.tar.gz $remote/deploy-vps.py; rmdir -- $remote"' EXIT
+          scp "${options[@]}" site.tar.gz scripts/deploy-vps.py "$server:$remote/"
+          ssh "${options[@]}" "$server" "python3 $remote/deploy-vps.py deploy $ALMIRON_BUILD_ID $remote/site.tar.gz --check-url https://www.almiron.ru"

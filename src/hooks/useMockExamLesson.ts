@@ -5,6 +5,7 @@ import { uploadToStorage } from '@/lib/storageUpload'
 import { compressImageFile, HOMEWORK_PHOTO_PRESET } from '@/lib/imageCompression'
 import type { RejectedHomeworkFile } from '@/lib/topicHomework'
 import { prepareWorkFiles } from '@/lib/heicToJpeg'
+import { captureAuthOperation } from '@/lib/draftIdentity'
 import {
   MOCK_EXAMS_BUCKET, clockOffset, mockPhotoPath,
   type MockLessonPhoto, type MockLessonResult, type MockLessonState,
@@ -106,11 +107,15 @@ export function useMockExamLesson(examId: string | undefined) {
   const uploadPhotos = useCallback(async (
     files: File[],
     onProgress?: (p: PhotoUploadProgress[]) => void,
+    onPending?: (files: File[]) => void,
   ): Promise<{ rejected: RejectedHomeworkFile[]; error: string | null }> => {
+    const assertAccount = captureAuthOperation()
     const st = stateRef.current
     if (!examId || !st) return { rejected: [], error: 'Пробник не загружен' }
     if (READ_ONLY_MODE) return { rejected: [], error: READ_ONLY_MESSAGE }
-    const { accepted, rejected } = await prepareWorkFiles(files)
+    const { accepted, rejected, originals } = await prepareWorkFiles(files)
+    assertAccount()
+    onPending?.(originals)
     if (accepted.length === 0) return { rejected, error: null }
     const studentId = st.student_id
 
@@ -119,11 +124,13 @@ export function useMockExamLesson(examId: string | undefined) {
     try {
       for (let i = 0; i < accepted.length; i++) {
         const upload = await compressImageFile(accepted[i], HOMEWORK_PHOTO_PRESET)
+        assertAccount()
         const path = mockPhotoPath(examId, studentId, upload.name)
         await uploadToStorage(MOCK_EXAMS_BUCKET, path, upload, p => {
           progress[i] = { ...progress[i], percent: p }
           onProgress?.(progress.slice())
         })
+        assertAccount()
         const { data, error: err } = await db.rpc<MockLessonPhoto>('add_mock_exam_photo', {
           p_mock_exam_id: examId,
           p_storage_path: path,
@@ -138,6 +145,8 @@ export function useMockExamLesson(examId: string | undefined) {
           throw new Error(err?.message || 'Фото не принято')
         }
         progress[i] = { ...progress[i], percent: 100 }
+        assertAccount()
+        onPending?.(originals.slice(i + 1))
         onProgress?.(progress.slice())
         setState(prev => (prev ? { ...prev, photos: [...prev.photos, data] } : prev))
       }

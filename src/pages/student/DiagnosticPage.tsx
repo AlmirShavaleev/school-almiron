@@ -15,8 +15,10 @@ import { Input } from '@/components/ui/Input'
 import { TaskContentRenderer } from '@/components/catalog/TaskContentRenderer'
 import { resolveTaskHtml } from '@/utils/resolveTaskHtml'
 import { useAuthStore } from '@/store/authStore'
+import { captureAuthOperation, useConfirmedStudentId } from '@/lib/draftIdentity'
 import { useSubscriptionsEnabled } from '@/hooks/useSubscription'
 import { useStudentPathHome } from '@/hooks/useStudentPath'
+import { clearStudentDraft, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey } from '@/lib/studentDrafts'
 import {
   DiagnosticError,
   answerDiagnostic,
@@ -39,14 +41,15 @@ function useElapsed(since: string | null | undefined): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-function TaskView({ state, onAnswer, busy, error }: {
+function TaskView({ state, onAnswer, busy, error, draft }: {
   state: DiagnosticState
   onAnswer: (answer: string | null) => void
   busy: boolean
   error: string | null
+  draft: string | null
 }) {
   const task = state.task!
-  const [value, setValue] = useState('')
+  const [value, setValue] = useState(() => readStudentDraft(draft, ''))
   const html = useMemo(() => resolveTaskHtml(task.statement_html, task.assets), [task])
   const elapsed = useElapsed(task.shown_at)
   const step = state.answered + 1
@@ -82,7 +85,11 @@ function TaskView({ state, onAnswer, busy, error }: {
         value={value}
         autoComplete="off"
         inputMode="text"
-        onChange={(e) => setValue(e.target.value)}
+        disabled={busy}
+        onChange={(e) => {
+          setValue(e.target.value)
+          saveStudentDraft(draft, e.target.value)
+        }}
         data-testid="diagnostic-answer"
       />
       {error && <p className="text-[15px] text-verdict-bad-ink" role="alert" data-testid="diagnostic-error">{error}</p>}
@@ -106,6 +113,8 @@ export function DiagnosticPage() {
 
   const [phase, setPhase] = useState<'loading' | 'intro' | 'task' | 'done'>('loading')
   const [state, setState] = useState<DiagnosticState | null>(null)
+  const owner = useConfirmedStudentId()
+  const draft = studentDraftKey('diagnostic', owner, 'onboarding', subject, state?.session_id, state?.task?.id)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -155,8 +164,12 @@ export function DiagnosticPage() {
     if (!state) return
     setBusy(true)
     setError(null)
+    const releaseReload = holdDraftReload()
+    const assertAccount = captureAuthOperation()
     try {
       const next = await answerDiagnostic(state, value)
+      assertAccount()
+      clearStudentDraft(draft)
       setState(next)
       if (!next.task) setPhase('done')
     } catch (e) {
@@ -166,6 +179,7 @@ export function DiagnosticPage() {
         try { setState(await startDiagnostic(subject)) } catch { /* остаётся сообщение */ }
       }
     } finally {
+      releaseReload()
       setBusy(false)
     }
   }
@@ -198,7 +212,7 @@ export function DiagnosticPage() {
             <h1 className="text-[20px] font-semibold text-graphite-900">Диагностика</h1>
             <Button variant="ghost" size="sm" onClick={() => navigate('/')} data-testid="diagnostic-pause">Прервать</Button>
           </div>
-          <TaskView key={state.task.id} state={state} onAnswer={answer} busy={busy} error={error} />
+          <TaskView key={state.task.id} state={state} onAnswer={answer} busy={busy} error={error} draft={draft} />
         </>
       )}
     </div>

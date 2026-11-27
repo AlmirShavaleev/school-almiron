@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useAuthStore } from '@/store/authStore'
+import { useConfirmedStudentId } from '@/lib/draftIdentity'
+import { acknowledgeDraftAnswer, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey } from '@/lib/studentDrafts'
 import { supabase } from '@/lib/supabase'
 import { normalizeAnswer } from '@/utils/variantAnswerNormalize'
 import type { AttachmentRecord } from '@/components/variant/ManualAnswerInput'
@@ -114,6 +117,9 @@ export function useVariantAttempt(
   initialCorrectCount?: number | null,
   initialManualReviewCount?: number | null,
 ): UseVariantAttemptReturn {
+  const userId = useConfirmedStudentId()
+  const epoch = useAuthStore(state => state.identityEpoch)
+  const draftKey = studentDraftKey('variant', userId, 'variants', 'individual-work', studentAssignmentId)
   const [items, setItems]               = useState<VariantItem[]>([])
   const [answers, setAnswers]           = useState<Record<string, string>>({})
   const [saveStates, setSaveStates]     = useState<Record<string, SaveState>>({})
@@ -129,8 +135,21 @@ export function useVariantAttempt(
 
   // Debounce timers per item
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const pendingAnswers = useRef<Record<string, string>>({})
+  const saves = useRef(new Map<string, { seq: number; promise: Promise<void> }>())
   // Latest save request seq per item (race-condition protection)
   const saveSeq = useRef<Record<string, number>>({})
+
+  useEffect(() => {
+    const restored = readStudentDraft<Record<string, string>>(draftKey, {})
+    pendingAnswers.current = restored
+    latestAnswersRef.current = restored
+    return () => {
+      Object.values(debounceTimers.current).forEach(clearTimeout)
+      debounceTimers.current = {}
+      saveSeq.current = {}
+    }
+  }, [studentAssignmentId, draftKey])
 
   // Derive initial attempt state from props
   useEffect(() => {
@@ -240,7 +259,9 @@ export function useVariantAttempt(
             }
           }
         }
-        setAnswers(map)
+        const restored = initialStatus === 'in_progress' ? pendingAnswers.current : {}
+        latestAnswersRef.current = { ...map, ...restored }
+        setAnswers(latestAnswersRef.current)
         setGradedAnswers(gradedMap)
       }
       if (!attachRes.error && attachRes.data) {
@@ -339,78 +360,87 @@ export function useVariantAttempt(
     }))
   }, [])
 
+  const savePendingAnswer = useCallback(async (itemId: string) => {
+    if (!studentAssignmentId) return
+    const key = `${studentAssignmentId}:${itemId}`
+    const drafts = pendingAnswers.current
+    const raw = drafts[itemId]
+    const seq = saveSeq.current[itemId] ?? 0
+    const active = saves.current.get(key)
+    if (active?.seq === seq) return active.promise
+
+    const promise = (async () => {
+      if (active) await active.promise.catch(() => {})
+      if (useAuthStore.getState().identityEpoch !== epoch || drafts !== pendingAnswers.current || (saveSeq.current[itemId] ?? 0) !== seq) return
+      try {
+        const { error } = await db.rpc('save_variant_answer', {
+          p_student_assignment_id: studentAssignmentId, p_variant_item_id: itemId, p_answer_raw: raw,
+        })
+        if (error) throw new Error(error.message)
+        if (useAuthStore.getState().identityEpoch !== epoch || drafts !== pendingAnswers.current || (saveSeq.current[itemId] ?? 0) !== seq) return
+        delete drafts[itemId]
+        acknowledgeDraftAnswer(draftKey, itemId, raw)
+        setSaveStates(prev => ({ ...prev, [itemId]: 'saved' }))
+      } catch (error) {
+        if (drafts === pendingAnswers.current && (saveSeq.current[itemId] ?? 0) === seq) {
+          setSaveStates(prev => ({ ...prev, [itemId]: 'error' }))
+        }
+        throw error
+      }
+    })()
+    const write = { seq, promise }
+    saves.current.set(key, write)
+    try { await promise }
+    finally { if (saves.current.get(key) === write) saves.current.delete(key) }
+  }, [studentAssignmentId, draftKey, epoch])
+
   const setAnswer = useCallback((itemId: string, raw: string) => {
-    setAnswers(prev => {
-      const next = { ...prev, [itemId]: raw }
-      latestAnswersRef.current = next
-      return next
-    })
+    pendingAnswers.current[itemId] = raw
+    saveStudentDraft(draftKey, pendingAnswers.current)
+    latestAnswersRef.current = { ...latestAnswersRef.current, [itemId]: raw }
+    setAnswers(latestAnswersRef.current)
     setSaveStates(prev => ({ ...prev, [itemId]: 'saving' }))
-
-    // Debounce the actual RPC call
     clearTimeout(debounceTimers.current[itemId])
-    const seq = (saveSeq.current[itemId] ?? 0) + 1
-    saveSeq.current[itemId] = seq
-
-    debounceTimers.current[itemId] = setTimeout(async () => {
-      if (!studentAssignmentId) return
-
-      const { error: saveErr } = await db.rpc('save_variant_answer', {
-        p_student_assignment_id: studentAssignmentId,
-        p_variant_item_id: itemId,
-        p_answer_raw: raw,
-      })
-
-      // Ignore stale responses
-      if (saveSeq.current[itemId] !== seq) return
-
-      setSaveStates(prev => ({
-        ...prev,
-        [itemId]: saveErr ? 'error' : 'saved',
-      }))
+    saveSeq.current[itemId] = (saveSeq.current[itemId] ?? 0) + 1
+    debounceTimers.current[itemId] = setTimeout(() => {
+      delete debounceTimers.current[itemId]
+      void savePendingAnswer(itemId).catch(() => {})
     }, DEBOUNCE_MS)
-  }, [studentAssignmentId])
+  }, [draftKey, savePendingAnswer])
 
   const flushPendingAnswerSaves = useCallback(async () => {
     if (!studentAssignmentId) return
-    const pendingIds = Object.keys(debounceTimers.current).filter(itemId => !!debounceTimers.current[itemId])
+    const drafts = pendingAnswers.current
+    const pendingIds = Object.keys(drafts)
     if (!pendingIds.length) return
 
-    await Promise.all(pendingIds.map(async itemId => {
+    await Promise.all(pendingIds.map(itemId => {
       clearTimeout(debounceTimers.current[itemId])
       delete debounceTimers.current[itemId]
-      const answerRaw = latestAnswersRef.current[itemId] ?? ''
-      const { error: saveErr } = await db.rpc('save_variant_answer', {
-        p_student_assignment_id: studentAssignmentId,
-        p_variant_item_id: itemId,
-        p_answer_raw: answerRaw,
-      })
-      setSaveStates(prev => ({
-        ...prev,
-        [itemId]: saveErr ? 'error' : 'saved',
-      }))
-      if (saveErr) {
-        throw new Error(saveErr.message)
-      }
+      return savePendingAnswer(itemId)
     }))
-  }, [studentAssignmentId])
+    if (Object.keys(drafts).length) throw new Error('Дождитесь сохранения последних изменений')
+  }, [studentAssignmentId, savePendingAnswer])
 
   const submitVariant = useCallback(async () => {
     if (!studentAssignmentId) return
+    const releaseReload = holdDraftReload()
     setSubmitting(true)
     setSubmitError(null)
 
     try {
       await flushPendingAnswerSaves()
+      if (useAuthStore.getState().identityEpoch !== epoch) throw new Error('Аккаунт изменился')
     } catch (e) {
+      releaseReload()
       setSubmitting(false)
       setSubmitError(e instanceof Error ? e.message : 'Не удалось сохранить ответы перед отправкой')
       return
     }
 
-    const { data, error: rpcErr } = await db.rpc('submit_variant', {
+    const { data, error: rpcErr } = await Promise.resolve(db.rpc('submit_variant', {
       p_student_assignment_id: studentAssignmentId,
-    })
+    })).finally(releaseReload)
 
     setSubmitting(false)
 
@@ -445,7 +475,7 @@ export function useVariantAttempt(
       grading_status:      result.grading_status as VariantAttemptState['grading_status'],
       manual_review_count: result.manual_review_count,
     } : null)
-  }, [flushPendingAnswerSaves, studentAssignmentId])
+  }, [flushPendingAnswerSaves, studentAssignmentId, epoch])
 
   return {
     items,

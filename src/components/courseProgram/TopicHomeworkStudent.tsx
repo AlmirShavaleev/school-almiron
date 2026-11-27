@@ -21,6 +21,9 @@ import { useAttemptNotes } from '@/hooks/useAttemptNotes'
 import { plural } from '@/lib/plural'
 import { attemptPdfReportFrom } from '@/lib/attemptPdfReport'
 import { useAuthStore } from '@/store/authStore'
+import { captureAuthOperation, useConfirmedStudentId } from '@/lib/draftIdentity'
+import { clearStudentDraft, holdDraftReload, readStudentDraft, saveStudentDraft, studentDraftKey, useDraftFiles } from '@/lib/studentDrafts'
+import { DraftFilesStatus } from '@/components/student/DraftFilesStatus'
 import {
   ATTEMPT_STATUS_LABEL,
   ATTEMPT_STATUS_TONE,
@@ -93,9 +96,10 @@ function worksheetNumber(title: string | null): string | undefined {
  * «Сдать заново» после принятия — это UX, а запрет держит триггер в БД.
  */
 export function TopicHomeworkStudent({
-  topicId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [], workPlanRepeatItemId,
+  topicId, courseId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [], workPlanRepeatItemId,
 }: {
   topicId: string
+  courseId?: string | null
   className?: string
   workPlanRepeatItemId?: string | null
   worksheetMaterials?: readonly TopicMaterial[]
@@ -165,6 +169,11 @@ export function TopicHomeworkStudent({
   )
   /** §206. Своё имя — для шапки скачиваемого PDF и для имени файла. */
   const myName = useAuthStore(s => s.profile?.full_name) || 'Ученик'
+  const userId = useConfirmedStudentId()
+  const scope = [preview ? null : userId, courseId, topicId, homework?.id, workPlanRepeatItemId ?? 'standard'] as const
+  const uploadTaskKey = studentDraftKey('topic-homework-task', ...scope)
+  const [pendingUpload, keepUpload, restoration] = useDraftFiles(studentDraftKey('topic-homework-files', ...scope))
+  const filesReady = restoration.phase === 'ready'
 
   useEffect(() => {
     const ids = attemptIdsKey ? attemptIdsKey.split(',') : []
@@ -186,6 +195,7 @@ export function TopicHomeworkStudent({
   }, [attemptIdsKey])
 
   async function run(fn: () => Promise<unknown>) {
+    const releaseReload = holdDraftReload()
     setBusy(true)
     setLocalError(null)
     try {
@@ -193,13 +203,20 @@ export function TopicHomeworkStudent({
     } catch (e: any) {
       setLocalError(e?.message ?? 'Не удалось выполнить действие')
     } finally {
+      releaseReload()
       setBusy(false)
     }
   }
 
   const uploadPicked = useCallback(
-    async (attemptId: string | null, incoming: File[], { fromPaste = false, photoTaskNumber }: { fromPaste?: boolean; photoTaskNumber?: string } = {}) => {
-      if (incoming.length === 0 || photosUploading.current) return
+    async (attemptId: string | null, incoming: File[], { fromPaste = false, photoTaskNumber, retry = false }: {
+      fromPaste?: boolean; photoTaskNumber?: string; retry?: boolean
+    } = {}) => {
+      if (!filesReady || incoming.length === 0 || photosUploading.current) return
+      if (pendingUpload.length && !retry) {
+        setLocalError('Сначала повторите загрузку сохранённых файлов или уберите их.')
+        return
+      }
       // Гейт по формату — ДО сжатия и до Storage. Отклонённый файл не
       // «выбран»: он не попадает ни в прогресс, ни в uploadAttemptFiles;
       // остальные из той же пачки идут как обычно.
@@ -210,25 +227,35 @@ export function TopicHomeworkStudent({
       setLocalError(null)
       if (picked.length === 0) return
 
+      const releaseReload = holdDraftReload()
+      const assertAccount = captureAuthOperation()
+      saveStudentDraft(uploadTaskKey, photoTaskNumber ?? '')
+      keepUpload(picked)
       photosUploading.current = true
       setUploads(picked.map(f => ({ name: f.name, percent: 0 })))
       try {
         const id = attemptId ?? await startAttempt(false)
+        assertAccount()
         if (!id) return
         const onProgress = (index: number, percent: number) => {
           setUploads(prev => prev.map((u, i) => (i === index ? { ...u, percent } : u)))
+          if (percent === 100) keepUpload(picked.slice(index + 1))
         }
         if (photoTaskNumber) await uploadAttemptFiles(id, picked, onProgress, photoTaskNumber)
         else await uploadAttemptFiles(id, picked, onProgress)
+        assertAccount()
+        keepUpload([])
+        clearStudentDraft(uploadTaskKey)
       } catch (err: any) {
         setLocalError(err?.message ?? 'Не удалось загрузить файлы')
       } finally {
+        releaseReload()
         photosUploading.current = false
         setUploads([])
         if (!attemptId) reload()
       }
     },
-    [reload, startAttempt, uploadAttemptFiles],
+    [filesReady, reload, startAttempt, uploadAttemptFiles, keepUpload, pendingUpload.length, uploadTaskKey],
   )
 
   const draftAttempt = attempts.find(a => a.status === 'draft') ?? null
@@ -279,6 +306,18 @@ export function TopicHomeworkStudent({
     const number = worksheetNumber(material.title)
     return !number || (material.kind === 'file' && selectedNumber?.startsWith(number + '.'))
   })
+  const pendingFilesFeedback = !preview && !uploadingFiles && pendingUpload.length > 0 && (
+    <div className="my-2 flex flex-wrap items-center gap-2 text-sm">
+      <span>Файлов в черновике: {pendingUpload.length}</span>
+      <button type="button" className="underline" onClick={() => void uploadPicked(draftAttemptId, pendingUpload, {
+        retry: true, photoTaskNumber: readStudentDraft(uploadTaskKey, '') || undefined,
+      })}>Повторить загрузку</button>
+      <button type="button" className="underline" onClick={() => {
+        keepUpload([])
+        clearStudentDraft(uploadTaskKey)
+      }}>Убрать файлы из черновика</button>
+    </div>
+  )
   const photoFeedback = (
     <>
       {uploadingFiles && (
@@ -289,6 +328,7 @@ export function TopicHomeworkStudent({
       {photoMode && (localError || error) && (
         <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{localError || error}</p>
       )}
+      {pendingFilesFeedback}
       {rejected.length > 0 && (
         <p className="text-sm text-amber-800" role="alert">
           {Array.from(new Set(rejected.map(file => file.problem))).join(' ')}
@@ -299,6 +339,11 @@ export function TopicHomeworkStudent({
 
   function submitPhotos(allowMissing: boolean) {
     setConfirmPartial(false)
+    if (!filesReady || photosUploading.current) return
+    if (pendingUpload.length) {
+      setLocalError('Сначала завершите загрузку файлов из черновика.')
+      return
+    }
     void run(async () => {
       const id = draftAttemptId ?? await startAttempt(false)
       if (!id) return
@@ -589,6 +634,8 @@ export function TopicHomeworkStudent({
       {!photoMode && (error || localError) && (
         <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{localError || error}</div>
       )}
+      <DraftFilesStatus {...restoration} />
+      {!photoMode && pendingFilesFeedback}
 
       {remainingWorksheet.length > 0 && (
         <div className="mt-4 space-y-3">
@@ -621,7 +668,7 @@ export function TopicHomeworkStudent({
       {photoMode && (
         <div className="mt-4 space-y-3">
           <ConfirmDialog
-            open={confirmPartial}
+            open={confirmPartial && filesReady}
             title="Отправить работу на проверку?"
             text={`Без решения: ${missingPhotoCount} ${plural(missingPhotoCount, 'задание', 'задания', 'заданий')} из ${photoNumbers.length}.`}
             cancelLabel="Продолжить решать"
@@ -642,7 +689,7 @@ export function TopicHomeworkStudent({
             ) : null}
             feedback={photoFeedback}
             readOnly={!!accepted || (!!active && active.status !== 'draft')}
-            disabled={busy || loading || uploadingFiles || preview}
+            disabled={busy || loading || uploadingFiles || preview || !filesReady}
             onSelect={number => {
               setActivePhotoNumber(number)
               if (!uploadingFiles) {
@@ -665,7 +712,7 @@ export function TopicHomeworkStudent({
                 else submitPhotos(false)
               }}
               loading={busy}
-              disabled={loading || uploadingFiles || preview}
+              disabled={loading || uploadingFiles || preview || !filesReady}
             >
               Сдать работу
             </Button>
@@ -715,7 +762,7 @@ export function TopicHomeworkStudent({
                 <CameraInput
                   testId="hw-retake-input"
                   ariaLabel="Сфотографировать заново"
-                  disabled={uploadingFiles}
+                  disabled={uploadingFiles || !filesReady}
                   onPick={picked => uploadPicked(active.id, picked)}
                 />
               </label>
@@ -752,7 +799,7 @@ export function TopicHomeworkStudent({
                   <CameraInput
                     testId="hw-camera-input"
                     ariaLabel="Снять фото страницы"
-                    disabled={uploadingFiles}
+                    disabled={uploadingFiles || !filesReady}
                     onPick={picked => uploadPicked(active.id, picked)}
                   />
                 </label>
@@ -772,7 +819,7 @@ export function TopicHomeworkStudent({
                     type="file"
                     accept={HOMEWORK_FILE_ACCEPT}
                     multiple
-                    disabled={uploadingFiles}
+                    disabled={uploadingFiles || !filesReady}
                     aria-label="Выбрать файлы работы"
                     onChange={async e => {
                       const picked = Array.from(e.target.files ?? [])
@@ -853,12 +900,12 @@ export function TopicHomeworkStudent({
                 data-testid="hw-dropzone"
                 data-dragging={dragOver}
                 role="button"
-                tabIndex={uploadingFiles || busy ? -1 : 0}
+                tabIndex={uploadingFiles || busy || !filesReady ? -1 : 0}
                 aria-label="Прикрепить фото или PDF работы"
-                aria-disabled={uploadingFiles || busy}
+                aria-disabled={uploadingFiles || busy || !filesReady}
                 aria-busy={uploadingFiles}
-                onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !uploadingFiles && !busy) { e.preventDefault(); e.currentTarget.querySelector('input')?.click() } }}
-                onDragOver={e => { e.preventDefault(); if (!uploadingFiles && !busy) setDragOver(true) }}
+                onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && filesReady && !uploadingFiles && !busy) { e.preventDefault(); e.currentTarget.querySelector('input')?.click() } }}
+                onDragOver={e => { e.preventDefault(); if (filesReady && !uploadingFiles && !busy) setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={async e => {
                   e.preventDefault()
@@ -892,7 +939,7 @@ export function TopicHomeworkStudent({
                   type="file"
                   accept={HOMEWORK_FILE_ACCEPT}
                   multiple
-                  disabled={uploadingFiles || busy}
+                  disabled={uploadingFiles || busy || !filesReady}
                   aria-label="Файлы работы"
                   onChange={async e => {
                     const picked = Array.from(e.target.files ?? [])
@@ -910,9 +957,11 @@ export function TopicHomeworkStudent({
             <Button
               data-testid="hw-submit-attempt"
               className="w-full"
-              onClick={() => run(() => submitAttempt(active.id))}
+              onClick={() => {
+                if (filesReady && !pendingUpload.length && !photosUploading.current) void run(() => submitAttempt(active.id))
+              }}
               loading={busy}
-              disabled={draftFiles.length === 0 || uploadingFiles}
+              disabled={!filesReady || draftFiles.length === 0 || uploadingFiles || pendingUpload.length > 0}
               title={draftFiles.length === 0 ? 'Сначала прикрепите работу' : undefined}
             >
               Отправить на проверку
