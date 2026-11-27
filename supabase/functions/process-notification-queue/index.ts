@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
   buildLinkButton,
   buildMockExamResultTelegramMessage,
+  buildMockExamAssignedTelegramMessage,
   buildMockExamSoonTelegramMessage,
   buildMockExamStartTelegramMessage,
   buildHomeworkReminderTelegramMessage,
@@ -388,6 +389,8 @@ function buildMessage(item: QueueItem, appUrl: string) {
 
     // §224. Напоминания о пробнике — ставит триггер на mock_exams заранее
     // (scheduled_for); тексты и тест — там же, в `_shared/variant-telegram.ts`.
+    case 'mock_exam_assigned':
+      return buildMockExamAssignedTelegramMessage(p, appUrl)
     case 'mock_exam_soon':
       return buildMockExamSoonTelegramMessage(p)
     case 'mock_exam_started':
