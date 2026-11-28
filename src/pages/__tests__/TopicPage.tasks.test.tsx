@@ -14,6 +14,8 @@ import type { TopicTaskRow } from '@/hooks/useTopicTasks'
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
 const GROUP = 'g0000000-0000-0000-0000-000000000001'
 const PHYSICS_11A = '2e40ec74-4b69-49d4-b7e0-37e388435a20'
+const DYNAMICS_FIRST_PART = '39a92adc-d2ff-4909-8096-741d9c6f489f'
+let topicId: string
 let courseId: string
 let topicTitle: string
 let hasHomework: boolean
@@ -32,7 +34,7 @@ vi.mock('@/lib/supabase', () => ({
     from: (table: string) => {
       if (table === 'students') return chain({ id: 'student-1' })
       if (table === 'topics') return chain({
-        id: TOPIC, title: topicTitle, order_index: 0, available_from: null,
+        id: topicId, title: topicTitle, order_index: 0, available_from: null,
         modules: { id: 'mod-1', title: 'Механика', courses: { id: courseId, title: 'Физика', subject: 'physics' } },
       })
       if (table === 'groups') return chain({ id: GROUP, name: '11А' })
@@ -67,7 +69,9 @@ vi.mock('@/components/courseProgram/TopicVariantStudent', () => ({
   useTopicStudentVariants: () => ({ variants: [] }),
 }))
 vi.mock('@/components/courseProgram/TopicHomeworkStudent', () => ({
-  TopicHomeworkStudent: () => <div data-testid="homework-pdf-and-submission" />,
+  TopicHomeworkStudent: ({ allowSubmission }: { allowSubmission?: boolean }) => (
+    <div data-testid="homework-pdf" data-allow-submission={String(allowSubmission)} />
+  ),
 }))
 vi.mock('@/components/courseProgram/TopicTestStudent', () => ({ TopicTestStudent: () => null }))
 vi.mock('@/components/courseProgram/TopicMaterialItems', () => ({ TopicMaterialItems: () => null }))
@@ -110,7 +114,7 @@ function LocationProbe() {
 
 function renderPage(search = '') {
   return render(
-    <MemoryRouter initialEntries={[`/my-course/${GROUP}/topic/${TOPIC}${search}`]}>
+    <MemoryRouter initialEntries={[`/my-course/${GROUP}/topic/${topicId}${search}`]}>
       <Routes>
         <Route path="/my-course/:groupId/topic/:topicId" element={<><TopicPage /><LocationProbe /></>} />
       </Routes>
@@ -129,6 +133,7 @@ async function openTasks() {
 describe('Страница темы — задачи к уроку (§175)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    topicId = TOPIC
     courseId = 'c1'
     topicTitle = 'Кинематика'
     hasHomework = false
@@ -171,7 +176,8 @@ describe('Страница темы — задачи к уроку (§175)', () 
     expect(squares.filter(b => b.getAttribute('data-state') === 'solved')).toHaveLength(1)
   })
 
-  it('показывает онлайн-задачи во вкладке ДЗ физики 11А рядом с обычной сдачей', async () => {
+  it('показывает онлайн-задачи и PDF во вкладке ДЗ физики 11А с отключённой сдачей файлов', async () => {
+    topicId = DYNAMICS_FIRST_PART
     courseId = PHYSICS_11A
     topicTitle = 'Динамика. Первая часть'
     hasHomework = true
@@ -180,7 +186,8 @@ describe('Страница темы — задачи к уроку (§175)', () 
     const online = await screen.findByRole('region', { name: 'Задания с автопроверкой' })
     expect(within(online).getByText('Решено 1 из 3')).toBeVisible()
     expect(within(online).getByLabelText('Ответ на задачу')).toBeVisible()
-    expect(screen.getByTestId('homework-pdf-and-submission')).toBeVisible()
+    expect(screen.getByTestId('homework-pdf')).toHaveAttribute('data-allow-submission', 'false')
+    expect(screen.getByTestId('topic-group-online-homework-state')).toHaveTextContent('решено 1 из 3')
     await openTasks()
     expect(screen.getByText('Решено 1 из 3')).toBeVisible()
   })
@@ -194,7 +201,7 @@ describe('Страница темы — задачи к уроку (§175)', () 
     hasHomework = true
     renderPage('?tab=homework')
 
-    expect(await screen.findByTestId('homework-pdf-and-submission')).toBeVisible()
+    expect(await screen.findByTestId('homework-pdf')).toHaveAttribute('data-allow-submission', 'true')
     expect(screen.queryByRole('region', { name: 'Задания с автопроверкой' })).toBeNull()
   })
 })

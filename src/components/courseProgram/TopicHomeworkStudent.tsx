@@ -94,9 +94,11 @@ function worksheetNumber(title: string | null): string | undefined {
  */
 export function TopicHomeworkStudent({
   topicId, className, solution, onOpenSolution, onSubmitted, worksheetMaterials = [], workPlanRepeatItemId,
+  allowSubmission = true,
 }: {
   topicId: string
   className?: string
+  allowSubmission?: boolean
   workPlanRepeatItemId?: string | null
   worksheetMaterials?: readonly TopicMaterial[]
   /**
@@ -199,7 +201,7 @@ export function TopicHomeworkStudent({
 
   const uploadPicked = useCallback(
     async (attemptId: string | null, incoming: File[], { fromPaste = false, photoTaskNumber }: { fromPaste?: boolean; photoTaskNumber?: string } = {}) => {
-      if (incoming.length === 0 || photosUploading.current) return
+      if (!allowSubmission || incoming.length === 0 || photosUploading.current) return
       // Гейт по формату — ДО сжатия и до Storage. Отклонённый файл не
       // «выбран»: он не попадает ни в прогресс, ни в uploadAttemptFiles;
       // остальные из той же пачки идут как обычно.
@@ -228,7 +230,7 @@ export function TopicHomeworkStudent({
         if (!attemptId) reload()
       }
     },
-    [reload, startAttempt, uploadAttemptFiles],
+    [allowSubmission, reload, startAttempt, uploadAttemptFiles],
   )
 
   const draftAttempt = attempts.find(a => a.status === 'draft') ?? null
@@ -236,7 +238,7 @@ export function TopicHomeworkStudent({
   const draftHasPhotoTasks = !!draftAttempt?.photo_task_numbers?.length
 
   useEffect(() => {
-    if (!draftAttemptId || uploadingFiles || draftHasPhotoTasks) return
+    if (!allowSubmission || !draftAttemptId || uploadingFiles || draftHasPhotoTasks) return
     function onPaste(e: ClipboardEvent) {
       const target = e.target as HTMLElement | null
       if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return
@@ -247,7 +249,7 @@ export function TopicHomeworkStudent({
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
-  }, [draftAttemptId, draftHasPhotoTasks, uploadingFiles, uploadPicked])
+  }, [allowSubmission, draftAttemptId, draftHasPhotoTasks, uploadingFiles, uploadPicked])
 
   if (loading && (!activePhotoNumber || !homework)) {
     return (
@@ -266,7 +268,7 @@ export function TopicHomeworkStudent({
   const draftFiles = active ? attemptFiles.filter(f => f.attempt_id === active.id) : []
   const existingAttempt = active ?? accepted
   const photoNumbers = (existingAttempt ? existingAttempt.photo_task_numbers : homework.photo_task_numbers) ?? []
-  const photoMode = photoNumbers.length > 0
+  const photoMode = allowSubmission && photoNumbers.length > 0
   const photoFiles = active ? draftFiles : accepted ? attemptFiles.filter(file => file.attempt_id === accepted.id) : []
   const missingPhotoNumbers = missingHomeworkPhotoNumbers(photoNumbers, photoFiles)
   const missingPhotoCount = missingPhotoNumbers.length
@@ -326,7 +328,7 @@ export function TopicHomeworkStudent({
     ? latestReviewed
     : null
   const pastAttempts = newestFirst.filter(a => a.id !== featured?.id && a.status !== 'draft')
-  const canResubmit = canStartNewAttempt(attempts) && attempts.length > 0
+  const canResubmit = allowSubmission && canStartNewAttempt(attempts) && attempts.length > 0
 
   // Определяем состояние шагов
   const submittedOrBetter = attempts.some(a => ['submitted', 'accepted', 'returned_for_revision'].includes(a.status))
@@ -339,7 +341,7 @@ export function TopicHomeworkStudent({
   const urgency = dueUrgency(homework.due_at)
   // §239. У проверенной работы срок живёт в итоге разбора («Пересдать до …»)
   // — второй баннер про тот же срок над ним был бы повтором.
-  const showDeadlineBanner = urgency.level !== 'none' && (active ? active.status === 'draft' : !featured)
+  const showDeadlineBanner = allowSubmission && urgency.level !== 'none' && (active ? active.status === 'draft' : !featured)
 
   function pluralizeDays(n: number): string {
     if (n % 10 === 1 && n % 100 !== 11) return 'день'
@@ -496,7 +498,7 @@ export function TopicHomeworkStudent({
             {ATTEMPT_STATUS_LABEL.accepted}
           </span>
         )}
-        {formatDue(homework.due_at) && (
+        {allowSubmission && formatDue(homework.due_at) && (
           <span className="ml-auto text-xs text-gray-500">{formatDue(homework.due_at)}</span>
         )}
       </div>
@@ -507,7 +509,7 @@ export function TopicHomeworkStudent({
       )}
 
       {/* ── Полоса шагов ── */}
-      <div data-testid="hw-steps" className="mb-4 flex items-center gap-0">
+      <div hidden={!allowSubmission && !submittedOrBetter} data-testid="hw-steps" className={cn('mb-4 items-center gap-0', (allowSubmission || submittedOrBetter) && 'flex')}>
         {/* Шаг 1: Выдано */}
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-white border-2 border-emerald-600">✓</div>
@@ -674,7 +676,7 @@ export function TopicHomeworkStudent({
       )}
 
       {/* ── Сборка сдачи (только если есть черновик) ── */}
-      {!photoMode && active && active.status === 'draft' && (
+      {allowSubmission && !photoMode && active && active.status === 'draft' && (
         <div className="mt-4">
           {/* Заголовок с числом страниц */}
           <div className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
@@ -951,7 +953,7 @@ export function TopicHomeworkStudent({
       */}
       {featured && (
         <AttemptFeedback
-          homework={homework}
+          homework={allowSubmission ? homework : { ...homework, due_at: null }}
           attempt={featured}
           review={latestReview(reviews, featured.id)}
           files={attemptFiles.filter(f => f.attempt_id === featured.id)}
@@ -962,7 +964,7 @@ export function TopicHomeworkStudent({
             disabled: preview,
             title: preview ? PREVIEW_NOOP_MESSAGE : undefined,
           } : null}
-          resubmitNote={featured.status === 'returned_for_revision' && active?.status === 'draft'
+          resubmitNote={allowSubmission && featured.status === 'returned_for_revision' && active?.status === 'draft'
             ? 'Новая попытка уже начата — загрузи исправленные страницы выше и отправь.'
             : null}
           solution={solution?.unlocked && solution.hasSolution && onOpenSolution ? { onOpen: onOpenSolution } : null}
@@ -972,7 +974,7 @@ export function TopicHomeworkStudent({
       )}
 
       {/* ── Начать сдачу ── */}
-      {!photoMode && !active && !accepted && !(featured && canResubmit) && (
+      {allowSubmission && !photoMode && !active && !accepted && !(featured && canResubmit) && (
         <div className="mt-4">
           <Button
             data-testid="hw-start-attempt"

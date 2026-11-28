@@ -13,13 +13,15 @@ let attempts: TopicHomeworkAttemptRow[] = []
 let reviews: TopicHomeworkReviewRow[] = []
 let taskRows: ReviewTaskRow[] = []
 const startAttempt = vi.fn()
+const uploadAttemptFiles = vi.fn()
 
 vi.mock('@/hooks/useTopicHomework', () => ({
   useTopicHomework: () => ({
     homework: { id: 'hw1', topic_id: 't1', title: 'ДЗ по кинематике', instructions: null, is_published: true, created_by: 'teacher', due_at: null, grade_scale: 'five', created_at: '', updated_at: '' },
-    files: [], attempts, reviews, loading: false, error: null,
+    files: [{ id: 'worksheet', homework_id: 'hw1', original_filename: 'ДЗ.pdf', storage_path: 'worksheets/hw1.pdf', size_bytes: 1000 }],
+    attempts, reviews, loading: false, error: null,
     attemptFiles: attempts.flatMap(a => [1, 2].map(n => ({ id: `${a.id}-f${n}`, attempt_id: a.id, storage_path: `${a.id}/photo-${n}.jpg`, file_name: `IMG_${n}.jpg`, mime_type: 'image/jpeg', size_bytes: 1, position: n, created_at: '' }))),
-    startAttempt, uploadAttemptFiles: vi.fn(), removeAttemptFile: vi.fn(), reorderAttemptFiles: vi.fn(), submitAttempt: vi.fn(),
+    startAttempt, uploadAttemptFiles, removeAttemptFile: vi.fn(), reorderAttemptFiles: vi.fn(), submitAttempt: vi.fn(),
   }),
 }))
 vi.mock('@/hooks/useHomeworkReviewTasks', () => ({ useReviewTasksOfAttempts: () => taskRows }))
@@ -88,6 +90,7 @@ beforeEach(() => {
     row('att-2', '3', 'wrong', 'СЕКРЕТ-2'), row('att-2', '7', 'partial', '18 м'),
   ]
   startAttempt.mockReset().mockResolvedValue('att-new')
+  uploadAttemptFiles.mockClear()
 })
 
 describe('ДЗ ученику — разбор проверенной попытки (§239)', () => {
@@ -158,5 +161,27 @@ describe('ДЗ ученику — разбор проверенной попыт
     reviews = [review('att-2', 'accepted', 'Молодец', 5)]
     render(<TopicHomeworkStudent topicId="t1" solution={{ unlocked: false, hasSolution: true }} onOpenSolution={vi.fn()} />)
     expect(screen.queryByTestId('feedback-solution')).not.toBeInTheDocument()
+  })
+
+  it('в онлайн-ДЗ показывает PDF и прежний разбор без кнопки пересдачи', () => {
+    render(<TopicHomeworkStudent topicId="t1" allowSubmission={false} />)
+    expect(screen.getByText('ДЗ.pdf')).toBeVisible()
+    expect(screen.getByTestId('attempt-feedback')).toHaveTextContent('Попытка №2')
+    expect(screen.getByTestId('hw-history-row')).toHaveTextContent('Попытка №1')
+    expect(screen.queryByTestId('hw-resubmit')).toBeNull()
+    expect(screen.queryByTestId('hw-start-attempt')).toBeNull()
+  })
+
+  it('начатый черновик онлайн-ДЗ не открывает загрузку через интерфейс или вставку', () => {
+    attempts = [attempt(1, 'draft')]
+    render(<TopicHomeworkStudent topicId="t1" allowSubmission={false} />)
+    expect(screen.getByText('ДЗ.pdf')).toBeVisible()
+    expect(screen.getByTestId('hw-steps')).not.toBeVisible()
+    expect(screen.queryByTestId('hw-submit-attempt')).toBeNull()
+    expect(screen.queryByTestId('hw-dropzone')).toBeNull()
+    expect(screen.queryByTestId('hw-camera-input')).toBeNull()
+    fireEvent.paste(document.body, { clipboardData: { files: [new File(['image'], 'work.jpg', { type: 'image/jpeg' })] } })
+    expect(uploadAttemptFiles).not.toHaveBeenCalled()
+    expect(startAttempt).not.toHaveBeenCalled()
   })
 })

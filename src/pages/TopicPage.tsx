@@ -53,6 +53,7 @@ import { readPagePosition, savePagePosition, takeScrollPosition } from '@/lib/pa
 import { noteNav } from '@/lib/perf/rum'
 import { ownStudentRow } from '@/lib/ownStudent'
 import { LessonNavigation } from '@/components/student/course/LessonNavigation'
+import { usesOnlineHomework } from '@/lib/onlineHomeworkTopics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,8 +78,6 @@ interface TopicInfo {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const PHYSICS_EGE_11A_COURSE_ID = '2e40ec74-4b69-49d4-b7e0-37e388435a20'
 
 function getYouTubeEmbed(url: string): string | null {
   if (!url) return null
@@ -456,10 +455,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   if (hasHomework || (autocheckHomework && autocheckTotal > 0)) availableTabs.push('homework')
   const hasTopicTasks = topicTasks.total > 0
   // Use the lesson's existing assignments so both tabs show the same progress.
-  const showOnlineHomework = topic.course_id === PHYSICS_EGE_11A_COURSE_ID
-    && /первая\s+част/i.test(topic.title)
-    && hasHomework && !timed && !autocheckHomework && !repeatItemId
-    && hasTopicTasks && topicTasks.rows.every(task => task.auto_checkable)
+  const showOnlineHomework = usesOnlineHomework(topic.id) && hasHomework && !timed && !autocheckHomework
   const hasAnyTest = (hasTest || hasTopicTasks) && isTopicSectionVisible('test')
   if (hasAnyTest) availableTabs.push('test')
   // Отдельным рядом, а не рубрикой перечня: у тренировки нет ни отметки, ни
@@ -517,7 +513,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         </span>
       )
     }
-    if (groupKey === 'homework') {
+    if (groupKey === 'homework' && !showOnlineHomework) {
       return (
         <span
           data-testid="topic-group-homework-state"
@@ -537,12 +533,12 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
 
     // Задачи к уроку отметки не имеют: группу закрывают решённые задачи.
     // Поэтому вместо кнопки — счёт, тот же, что ученик видит внутри вкладки.
-    if (groupKey === 'tasks') {
+    if (groupKey === 'tasks' || (groupKey === 'homework' && showOnlineHomework)) {
       if (topicTasks.total === 0) return null
       const done = topicTasks.solved >= topicTasks.total
       return (
         <span
-          data-testid="topic-group-tasks-state"
+          data-testid={groupKey === 'tasks' ? 'topic-group-tasks-state' : 'topic-group-online-homework-state'}
           className={cn(
             'shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium sm:ml-auto',
             done ? 'bg-emerald-50 text-emerald-800' : 'bg-gray-100 text-gray-500',
@@ -704,6 +700,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
           <TopicHomeworkStudent
             key={topic.id + (repeatHomework ?? '')}
             topicId={topic.id}
+            allowSubmission={!showOnlineHomework}
             workPlanRepeatItemId={repeatHomework}
             worksheetMaterials={inlinePhotoWorksheet ? studentMaterials.filter(material => material.section === 'worksheet_homework') : undefined}
             onSubmitted={repeatHomework ? undefined : homeworkState.markSubmitted}

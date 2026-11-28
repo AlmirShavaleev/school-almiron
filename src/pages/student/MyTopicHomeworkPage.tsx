@@ -19,6 +19,7 @@ import {
   type TopicJournalHomework,
 } from '@/lib/topicJournal'
 import { dueUrgency } from '@/lib/topicHomework'
+import { usesOnlineHomework } from '@/lib/onlineHomeworkTopics'
 import { getSubjectColor } from '@/lib/subjectColors'
 import { cn } from '@/utils/cn'
 
@@ -131,6 +132,7 @@ function HomeworkRow({
   const score = showScore ? formatHomeworkScore(row) : null
   const urgency = showDue ? dueUrgency(row.due_at) : null
   const color = getSubjectColor(subject)
+  const online = usesOnlineHomework(row.topic_id)
 
   // Только показывать row.title, если он осмысленный (не равен 'Домашнее задание')
   const hasCustomTitle = row.title.trim() !== 'Домашнее задание'
@@ -205,7 +207,7 @@ function HomeworkRow({
               : 'bg-gray-900 text-white hover:bg-gray-950'
             : 'border border-gray-200 text-gray-600 bg-white hover:border-gray-300'
         )}>
-          {action === 'submit' ? 'Сдать' : 'Открыть'}
+          {action === 'submit' ? (online ? 'Решать' : 'Сдать') : 'Открыть'}
         </span>
       )}
     </>
@@ -402,7 +404,7 @@ export function MyTopicHomeworkPage() {
 
 /** Тип ДЗ пилюлей: автопроверка или вторая часть (проверяет преподаватель). */
 function TypePill({ row }: { row: BoardRow }) {
-  return row.autocheck
+  return row.autocheck || usesOnlineHomework(row.topic_id)
     ? <span className="stu-tag t-blue">автопроверка</span>
     : <span className="stu-tag t-grey">2 часть</span>
 }
@@ -413,6 +415,7 @@ function StatusPill({ row }: { row: BoardRow }) {
     const score = row.autocheck ? null : formatHomeworkScore(row)
     return <span className="stu-tag t-green" data-testid="hw-status">принято{score ? ` · ${score}` : ''}</span>
   }
+  if (usesOnlineHomework(row.topic_id)) return <span className="stu-tag stu-tag-or" data-testid="hw-status">решать онлайн</span>
   return <span className="stu-tag stu-tag-or" data-testid="hw-status">{row.status === 'returned' ? 'вернули · сдать' : 'сдать'}</span>
 }
 
