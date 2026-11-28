@@ -13,6 +13,10 @@ import type { TopicTaskRow } from '@/hooks/useTopicTasks'
 
 const TOPIC = 'f0000000-0000-0000-0000-000000000001'
 const GROUP = 'g0000000-0000-0000-0000-000000000001'
+const PHYSICS_11A = '2e40ec74-4b69-49d4-b7e0-37e388435a20'
+let courseId: string
+let topicTitle: string
+let hasHomework: boolean
 
 function chain(result: unknown, count = 0) {
   const c: Record<string, unknown> = {}
@@ -28,10 +32,11 @@ vi.mock('@/lib/supabase', () => ({
     from: (table: string) => {
       if (table === 'students') return chain({ id: 'student-1' })
       if (table === 'topics') return chain({
-        id: TOPIC, title: 'Кинематика', order_index: 0, available_from: null,
-        modules: { id: 'mod-1', title: 'Механика', courses: { id: 'c1', title: 'Физика', subject: 'physics' } },
+        id: TOPIC, title: topicTitle, order_index: 0, available_from: null,
+        modules: { id: 'mod-1', title: 'Механика', courses: { id: courseId, title: 'Физика', subject: 'physics' } },
       })
       if (table === 'groups') return chain({ id: GROUP, name: '11А' })
+      if (table === 'topic_homework' && hasHomework) return chain([{ id: 'hw-1', autocheck: false }], 1)
       return chain(null, 0)
     },
   },
@@ -61,7 +66,9 @@ vi.mock('@/components/courseProgram/TopicVariantStudent', () => ({
   TopicVariantStudent: () => null,
   useTopicStudentVariants: () => ({ variants: [] }),
 }))
-vi.mock('@/components/courseProgram/TopicHomeworkStudent', () => ({ TopicHomeworkStudent: () => null }))
+vi.mock('@/components/courseProgram/TopicHomeworkStudent', () => ({
+  TopicHomeworkStudent: () => <div data-testid="homework-pdf-and-submission" />,
+}))
 vi.mock('@/components/courseProgram/TopicTestStudent', () => ({ TopicTestStudent: () => null }))
 vi.mock('@/components/courseProgram/TopicMaterialItems', () => ({ TopicMaterialItems: () => null }))
 vi.mock('@/components/catalog/CatalogTaskContent', () => ({
@@ -120,7 +127,12 @@ async function openTasks() {
 }
 
 describe('Страница темы — задачи к уроку (§175)', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    courseId = 'c1'
+    topicTitle = 'Кинематика'
+    hasHomework = false
+  })
 
   it('показывает задачи на первом открытии без отдельной выдачи', async () => {
     renderPage()
@@ -157,5 +169,32 @@ describe('Страница темы — задачи к уроку (§175)', () 
     expect(screen.getByText(/Решено 1 из 3/)).toBeInTheDocument()
     const squares = within(screen.getByTestId('topic-tasks-strip')).getAllByRole('button')
     expect(squares.filter(b => b.getAttribute('data-state') === 'solved')).toHaveLength(1)
+  })
+
+  it('показывает онлайн-задачи во вкладке ДЗ физики 11А рядом с обычной сдачей', async () => {
+    courseId = PHYSICS_11A
+    topicTitle = 'Динамика. Первая часть'
+    hasHomework = true
+    renderPage('?tab=homework')
+
+    const online = await screen.findByRole('region', { name: 'Задания с автопроверкой' })
+    expect(within(online).getByText('Решено 1 из 3')).toBeVisible()
+    expect(within(online).getByLabelText('Ответ на задачу')).toBeVisible()
+    expect(screen.getByTestId('homework-pdf-and-submission')).toBeVisible()
+    await openTasks()
+    expect(screen.getByText('Решено 1 из 3')).toBeVisible()
+  })
+
+  it.each([
+    ['другой курс', 'c1', 'Динамика. Первая часть'],
+    ['вторая часть', PHYSICS_11A, 'Динамика. Вторая часть'],
+  ])('сохраняет обычную вкладку ДЗ — %s', async (_name, course, title) => {
+    courseId = course
+    topicTitle = title
+    hasHomework = true
+    renderPage('?tab=homework')
+
+    expect(await screen.findByTestId('homework-pdf-and-submission')).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'Задания с автопроверкой' })).toBeNull()
   })
 })

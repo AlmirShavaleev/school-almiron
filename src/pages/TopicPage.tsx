@@ -78,6 +78,8 @@ interface TopicInfo {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const PHYSICS_EGE_11A_COURSE_ID = '2e40ec74-4b69-49d4-b7e0-37e388435a20'
+
 function getYouTubeEmbed(url: string): string | null {
   if (!url) return null
   try {
@@ -453,6 +455,11 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
 
   if (hasHomework || (autocheckHomework && autocheckTotal > 0)) availableTabs.push('homework')
   const hasTopicTasks = topicTasks.total > 0
+  // Use the lesson's existing assignments so both tabs show the same progress.
+  const showOnlineHomework = topic.course_id === PHYSICS_EGE_11A_COURSE_ID
+    && /первая\s+част/i.test(topic.title)
+    && hasHomework && !timed && !autocheckHomework && !repeatItemId
+    && hasTopicTasks && topicTasks.rows.every(task => task.auto_checkable)
   const hasAnyTest = (hasTest || hasTopicTasks) && isTopicSectionVisible('test')
   if (hasAnyTest) availableTabs.push('test')
   // Отдельным рядом, а не рубрикой перечня: у тренировки нет ни отметки, ни
@@ -683,6 +690,14 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
         )
       ) : key === 'homework' ? (
         <div className="space-y-4">
+          {showOnlineHomework && (
+            <section aria-labelledby="topic-online-homework-heading" className="space-y-3">
+              <h2 id="topic-online-homework-heading" className="text-base font-semibold text-gray-900">
+                Задания с автопроверкой
+              </h2>
+              <TopicTasksStudent tasks={topicTasks} />
+            </section>
+          )}
           {autocheckHomework && autocheck.state && autocheckTotal > 0 && (
             <TopicAutocheckStudent state={autocheck.state} onCheck={autocheck.check} preview={preview} />
           )}
