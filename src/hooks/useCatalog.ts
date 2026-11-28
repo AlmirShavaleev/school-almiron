@@ -661,14 +661,29 @@ export function safeDecodeStoragePath(path: string): string {
  * workaround for PNGs imported with a wrong Content-Type).
  */
 const ASSETS_BASE_URL: string = (import.meta.env.VITE_ASSETS_BASE_URL ?? '').replace(/\/+$/, '')
+// Complete TeX exports for the archived tasks already assigned in Physics 11A.
+const restoredPhysicsSessions = new Set([
+  '28280', '28281', '32955', '32956', '34760', '35343', '35344', '75358',
+  '75359', '117854', '117855', '190766', '190767', '194127', '195445', '196071',
+  '199706', '200185', '200186', '204113', '206003', '211306', '211307', '211501',
+  '212185', '212190', '212192', '212199', '212254', '212255', '236924', '236925',
+  '241059', '241060', '275635', '275636', '276251', '276252', '276267', '276268',
+  '282566', '282567', '290130', '290241', '290642', '291279', '291280', '292010',
+  '292011', '330821', '330854', '338894', '338895', '379701', '379702', '382170',
+  '382171',
+])
 
 export function getAssetUrl(storagePath: string): string {
   const decoded = safeDecodeStoragePath(storagePath)
-  if (ASSETS_BASE_URL) {
-    // Object keys in R2 are stored decoded ("1 (1).png"); encode each path
+  const session = /^physics-ege\/(\d+)\/[^/]+$/.exec(decoded)?.[1]
+  const baseUrl = session && restoredPhysicsSessions.has(session)
+    ? `${import.meta.env.BASE_URL}assets/physics-legacy-v1`
+    : ASSETS_BASE_URL
+  if (baseUrl) {
+    // Object keys are stored decoded ("1 (1).png"); encode each path
     // segment so spaces/parentheses/Cyrillic survive as a valid URL.
     const encoded = decoded.split('/').map(encodeURIComponent).join('/')
-    return `${ASSETS_BASE_URL}/${encoded}`
+    return `${baseUrl}/${encoded}`
   }
   // PNG/JPEG files were imported with Content-Type: image/svg+xml (wrong).
   // The /render/image/ endpoint reads actual bytes and serves the correct MIME type.
