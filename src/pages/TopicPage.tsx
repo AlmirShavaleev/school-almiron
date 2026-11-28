@@ -27,7 +27,6 @@ import { useTopicTasks } from '@/hooks/useTopicTasks'
 import { useTopicTraining } from '@/hooks/useTopicTraining'
 import { TopicTrainingStudent } from '@/components/courseProgram/TopicTrainingStudent'
 import { subtopicsForStudent } from '@/lib/training'
-import { useTopicStudentVariants } from '@/components/courseProgram/TopicVariantStudent'
 import {
   STUDENT_SECTION_ORDER, getVideoEmbedUrl, groupTopicSections, isMaterialSection,
   visibleMaterialsForStudent,
@@ -163,15 +162,10 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   // к файлам (§258: плюс «есть критерии» и «есть условие»).
   const solutionState = useTopicSolutionState(topicId ?? null)
 
-  // Тестирования из раздела «Тесты», выданные этому ученику. Отдельным хуком, а
-  // не общим запросом ниже: RPC сама решает, что ученику видно, включая
-  // закрытую тему. В предпросмотре RPC не зовём: выдач у персонала нет, а
-  // «есть ли задачи к уроку» решает staff-источник хука задач.
-  const { variants: topicVariants } = useTopicStudentVariants(preview ? undefined : topicId ?? undefined)
-
   // Задачи к уроку (§162). Хук живёт здесь, а не внутри вкладки: страница
   // показывает «решено N из M» в шапке группы, и второй такой же запрос при
-  // открытии урока был бы лишним.
+  // открытии урока был бы лишним. Ученический RPC создаёт выдачу при первом
+  // обращении, поэтому наличие задач определяем по его ответу.
   const topicTasks = useTopicTasks(topicId ?? undefined)
 
   // Тренировка (§234) — задачник по кодификатору, своя группа вкладок между
@@ -458,11 +452,7 @@ function TopicPageContent({ groupId: groupIdProp, topicId: topicIdProp, staffBar
   if (solutionState.hasSolution || sectionCounts.solution > 0) availableTabs.push('solution')
 
   if (hasHomework || (autocheckHomework && autocheckTotal > 0)) availableTabs.push('homework')
-  // Вкладка нужна и когда теста банка нет, а тестирование выдано.
-  // Скрытие рубрики решает один переключатель в перечне (`TOPIC_SECTIONS_HIDDEN`),
-  // а не условие по месту: рубрика уже однажды разъезжалась по копиям (§100).
-  // В предпросмотре «выдано ли» отвечает состав задач из staff-источника.
-  const hasTopicTasks = preview ? topicTasks.total > 0 : topicVariants.length > 0
+  const hasTopicTasks = topicTasks.total > 0
   const hasAnyTest = (hasTest || hasTopicTasks) && isTopicSectionVisible('test')
   if (hasAnyTest) availableTabs.push('test')
   // Отдельным рядом, а не рубрикой перечня: у тренировки нет ни отметки, ни

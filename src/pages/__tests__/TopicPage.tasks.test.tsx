@@ -56,10 +56,10 @@ vi.mock('@/hooks/useMyTopicHomeworkState', () => ({
   useMyTopicHomeworkState: () => ({ state: 'none' }),
   TOPIC_HOMEWORK_STATE_LABEL: { none: 'не выдано' },
 }))
-// Привязанный вариант есть — иначе вкладки «Задачи» не будет вовсе.
+// На первом открытии отдельной выдачи ещё нет. Задачи приходят из RPC урока.
 vi.mock('@/components/courseProgram/TopicVariantStudent', () => ({
   TopicVariantStudent: () => null,
-  useTopicStudentVariants: () => ({ variants: [{ student_assignment_id: 'sa-1' }] }),
+  useTopicStudentVariants: () => ({ variants: [] }),
 }))
 vi.mock('@/components/courseProgram/TopicHomeworkStudent', () => ({ TopicHomeworkStudent: () => null }))
 vi.mock('@/components/courseProgram/TopicTestStudent', () => ({ TopicTestStudent: () => null }))
@@ -122,7 +122,7 @@ async function openTasks() {
 describe('Страница темы — задачи к уроку (§175)', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('одна карточка, первая нерешённая, адрес получает `?task=`', async () => {
+  it('показывает задачи на первом открытии без отдельной выдачи', async () => {
     renderPage()
     await openTasks()
 
